@@ -1,0 +1,13 @@
+accessWidener v2 named
+
+# ServerConfigurationPacketListenerImpl.finishCurrentTask
+accessible method net/minecraft/server/network/ServerConfigurationPacketListenerImpl finishCurrentTask (Lnet/minecraft/server/network/ConfigurationTask$Type;)V
+
+# ServerCommonPacketListenerImpl.connection
+accessible field net/minecraft/server/network/ServerCommonPacketListenerImpl connection Lnet/minecraft/network/Connection;
+
+# Connection.channel
+accessible field net/minecraft/network/Connection channel Lio/netty/channel/Channel;
+
+# ChatScreen.input
+accessible field net/minecraft/client/gui/screens/ChatScreen input Lnet/minecraft/client/gui/components/EditBox;

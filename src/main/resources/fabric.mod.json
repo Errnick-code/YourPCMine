@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "ypm",
+  "version": "${version}",
+  "name": "YPM - Your PC Mine",
+  "description": "A tool for creating ARG experiences. Gives server operators control over client effects.",
+  "authors": ["errnicraft"],
+  "contact": {},
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      {
+        "adapter": "kotlin",
+        "value": "dev.errnicraft.ypm.YourPcMineMod"
+      }
+    ],
+    "client": [
+      {
+        "adapter": "kotlin",
+        "value": "dev.errnicraft.ypm.YourPcMineClient"
+      }
+    ]
+  },
+  "accessWidener": "ypm.accesswidener",
+  "depends": {
+    "fabricloader": ">=0.18.0",
+    "fabric-api": "*",
+    "fabric-language-kotlin": ">=1.12.3+kotlin.2.0.21",
+    "minecraft": "~1.21.11"
+  }
+}
