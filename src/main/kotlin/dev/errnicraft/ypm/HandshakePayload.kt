@@ -10,7 +10,7 @@ class HandshakePayload(val version: String = MOD_VERSION) : CustomPacketPayload 
     override fun type(): CustomPacketPayload.Type<HandshakePayload> = TYPE
 
     companion object {
-        const val MOD_VERSION = "1.0.2"
+        const val MOD_VERSION = "1.0.3"
 
         val TYPE = CustomPacketPayload.Type<HandshakePayload>(
             Identifier.fromNamespaceAndPath("ypm", "handshake")

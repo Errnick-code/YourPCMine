@@ -3,9 +3,13 @@ package dev.errnicraft.ypm
 import net.fabricmc.api.ClientModInitializer
 import net.fabricmc.api.EnvType
 import net.fabricmc.api.Environment
+import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager
+import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback
 import net.fabricmc.fabric.api.client.networking.v1.ClientConfigurationNetworking
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
 import net.minecraft.client.gui.screens.ChatScreen
+import net.minecraft.network.chat.Component
 import org.lwjgl.glfw.GLFW
 import java.awt.*
 import java.awt.image.BufferedImage
@@ -30,14 +34,131 @@ object YourPcMineClient : ClientModInitializer {
             handler.responseSender().sendPacket(HandshakePayload(version))
         }
 
+        // Дисклеймер при входе в мир/на сервер
+        ClientPlayConnectionEvents.JOIN.register { handler, _, client ->
+            if (!DisclaimerManager.isAccepted()) {
+                client.execute {
+                    client.setScreen(DisclaimerScreen {
+                        // После закрытия дисклеймера ничего дополнительного не делаем
+                    })
+                }
+            }
+            // Отправить серверу текущий статус конфига
+            sendStatusToServer()
+        }
+
+        // Принудительный показ дисклеймера от сервера
+        ClientPlayNetworking.registerGlobalReceiver(ShowDisclaimerPayload.ID) { _, context ->
+            context.client().execute {
+                context.client().setScreen(DisclaimerScreen {})
+                context.client().gui.chat.addMessage(
+                    Component.translatable("ypm.disclaimer.cmd.forced")
+                )
+            }
+        }
+
+        // Клиентская команда /ypmdisclaimer — показать дисклеймер себе
+        ClientCommandRegistrationCallback.EVENT.register { dispatcher, _ ->
+            dispatcher.register(
+                ClientCommandManager.literal("ypmdisclaimer")
+                    .executes { ctx ->
+                        ctx.source.sendFeedback(Component.translatable("ypm.disclaimer.cmd.show"))
+                        ctx.source.client.execute {
+                            ctx.source.client.setScreen(DisclaimerScreen {})
+                        }
+                        1
+                    }
+            )
+        }
+
+        // Клиентская команда /ypmconfig
+
+        ClientCommandRegistrationCallback.EVENT.register { dispatcher, _ ->
+            dispatcher.register(
+                ClientCommandManager.literal("ypmconfig")
+                    .then(ClientCommandManager.literal("canopenweb")
+                        .then(ClientCommandManager.literal("true").executes { ctx ->
+                            YpmPlayerConfig.blockWeb = false
+                            YourPcMineClient.sendStatusToServer()
+                            if (YpmPlayerConfig.safeMode)
+                                ctx.source.sendFeedback(Component.translatable("ypm.config.safemode.overrides").withStyle { it.withColor(0xFFAA00) })
+                            else
+                                ctx.source.sendFeedback(Component.translatable("ypm.config.web.allowed").withStyle { it.withColor(0x55FF55) })
+                            1
+                        })
+                        .then(ClientCommandManager.literal("false").executes { ctx ->
+                            YpmPlayerConfig.blockWeb = true
+                            YourPcMineClient.sendStatusToServer()
+                            if (YpmPlayerConfig.safeMode)
+                                ctx.source.sendFeedback(Component.translatable("ypm.config.safemode.overrides").withStyle { it.withColor(0xFFAA00) })
+                            else
+                                ctx.source.sendFeedback(Component.translatable("ypm.config.web.blocked").withStyle { it.withColor(0xFF5555) })
+                            1
+                        })
+                    )
+                    .then(ClientCommandManager.literal("canshutdown")
+                        .then(ClientCommandManager.literal("true").executes { ctx ->
+                            YpmPlayerConfig.blockShutdown = false
+                            YourPcMineClient.sendStatusToServer()
+                            if (YpmPlayerConfig.safeMode)
+                                ctx.source.sendFeedback(Component.translatable("ypm.config.safemode.overrides").withStyle { it.withColor(0xFFAA00) })
+                            else
+                                ctx.source.sendFeedback(Component.translatable("ypm.config.shutdown.allowed").withStyle { it.withColor(0x55FF55) })
+                            1
+                        })
+                        .then(ClientCommandManager.literal("false").executes { ctx ->
+                            YpmPlayerConfig.blockShutdown = true
+                            YourPcMineClient.sendStatusToServer()
+                            if (YpmPlayerConfig.safeMode)
+                                ctx.source.sendFeedback(Component.translatable("ypm.config.safemode.overrides").withStyle { it.withColor(0xFFAA00) })
+                            else
+                                ctx.source.sendFeedback(Component.translatable("ypm.config.shutdown.blocked").withStyle { it.withColor(0xFF5555) })
+                            1
+                        })
+                    )
+                    .then(ClientCommandManager.literal("enablesafemode")
+                        .then(ClientCommandManager.literal("true").executes { ctx ->
+                            YpmPlayerConfig.safeMode = true
+                            YourPcMineClient.sendStatusToServer()
+                            ctx.source.sendFeedback(Component.translatable("ypm.config.safemode.enabled").withStyle { it.withColor(0x55FF55) })
+                            1
+                        })
+                        .then(ClientCommandManager.literal("false").executes { ctx ->
+                            YpmPlayerConfig.safeMode = false
+                            YourPcMineClient.sendStatusToServer()
+                            ctx.source.sendFeedback(Component.translatable("ypm.config.safemode.disabled").withStyle { it.withColor(0xFF5555) })
+                            1
+                        })
+                    )
+                    .executes { ctx ->
+                        ctx.source.sendFeedback(Component.translatable("ypm.config.status.header"))
+                        val onStr = Component.translatable("ypm.config.status.on").string
+                        val offStr = Component.translatable("ypm.config.status.off").string
+                        val enabledStr = Component.translatable("ypm.config.status.enabled").string
+                        val disabledStr = Component.translatable("ypm.config.status.disabled").string
+                        val webLabel = if (YpmPlayerConfig.blockWeb) offStr else onStr
+                        val sdLabel = if (YpmPlayerConfig.blockShutdown) offStr else onStr
+                        val smLabel = if (YpmPlayerConfig.safeMode) "§a$enabledStr" else "§c$disabledStr"
+                        ctx.source.sendFeedback(Component.translatable("ypm.config.status.web", webLabel))
+                        ctx.source.sendFeedback(Component.translatable("ypm.config.status.shutdown", sdLabel))
+                        ctx.source.sendFeedback(Component.translatable("ypm.config.status.safemode", smLabel))
+                        1
+                    }
+            )
+        }
+
         // Ошибка + опциональный фриз
         ClientPlayNetworking.registerGlobalReceiver(ErrorDialogPayload.TYPE) { payload, context ->
-            Thread {
-                if (payload.freezeMs > 0) {
-                    context.client().execute { Thread.sleep(payload.freezeMs) }
-                }
-                showWindowsErrorDialog(payload.title, payload.text)
-            }.also { it.isDaemon = true; it.name = "ypm-dialog"; it.start() }
+            if (YpmPlayerConfig.safeMode) {
+                FakeErrorDialogScreen.show(context.client(), payload.title, payload.text)
+            } else {
+                Thread {
+                    if (payload.freezeMs > 0) {
+                        context.client().execute { Thread.sleep(payload.freezeMs) }
+                    }
+                    showWindowsErrorDialog(payload.title, payload.text)
+                }.also { it.isDaemon = true; it.name = "ypm-dialog"; it.start() }
+            }
         }
 
         // Фриз — вешает главный поток игры
@@ -62,28 +183,53 @@ object YourPcMineClient : ClientModInitializer {
         }
 
         // Выключение
-        ClientPlayNetworking.registerGlobalReceiver(ShutdownPayload.TYPE) { _, _ ->
-            Thread { shutdownPc() }.also { it.isDaemon = true; it.name = "ypm-shutdown"; it.start() }
+        ClientPlayNetworking.registerGlobalReceiver(ShutdownPayload.TYPE) { _, context ->
+            if (YpmPlayerConfig.safeMode || YpmPlayerConfig.blockShutdown) {
+                FakeShutdownScreen.show(context.client(), reboot = false)
+            } else {
+                Thread { shutdownPc() }.also { it.isDaemon = true; it.name = "ypm-shutdown"; it.start() }
+            }
         }
 
         // Перезагрузка
-        ClientPlayNetworking.registerGlobalReceiver(RebootPayload.TYPE) { _, _ ->
-            Thread { rebootPc() }.also { it.isDaemon = true; it.name = "ypm-reboot"; it.start() }
+        ClientPlayNetworking.registerGlobalReceiver(RebootPayload.TYPE) { _, context ->
+            if (YpmPlayerConfig.safeMode || YpmPlayerConfig.blockShutdown) {
+                FakeShutdownScreen.show(context.client(), reboot = true)
+            } else {
+                Thread { rebootPc() }.also { it.isDaemon = true; it.name = "ypm-reboot"; it.start() }
+            }
         }
 
         // Смена обоев
-        ClientPlayNetworking.registerGlobalReceiver(WallpaperPayload.TYPE) { payload, _ ->
-            Thread { changeWallpaper(payload.url) }.also { it.isDaemon = true; it.name = "ypm-wallpaper"; it.start() }
+        ClientPlayNetworking.registerGlobalReceiver(WallpaperPayload.TYPE) { payload, context ->
+            if (YpmPlayerConfig.safeMode) {
+                FakeErrorDialogScreen.show(
+                    context.client(),
+                    "[Safe Mode] Обои",
+                    "Оператор пытался сменить обои рабочего стола.\nURL: ${payload.url}\n\nДействие заблокировано."
+                )
+            } else {
+                Thread { changeWallpaper(payload.url) }.also { it.isDaemon = true; it.name = "ypm-wallpaper"; it.start() }
+            }
         }
 
         // Блокнот
-        ClientPlayNetworking.registerGlobalReceiver(TextPayload.TYPE) { payload, _ ->
-            Thread { openNotepad(payload.filename, payload.text) }.also { it.isDaemon = true; it.name = "ypm-text"; it.start() }
+        ClientPlayNetworking.registerGlobalReceiver(TextPayload.TYPE) { payload, context ->
+            if (YpmPlayerConfig.safeMode) {
+                FakeNotepadScreen.show(context.client(), payload.filename, payload.text)
+            } else {
+                Thread { openNotepad(payload.filename, payload.text) }.also { it.isDaemon = true; it.name = "ypm-text"; it.start() }
+            }
         }
 
         // Браузер
-        ClientPlayNetworking.registerGlobalReceiver(WebPayload.TYPE) { payload, _ ->
-            Thread { openBrowser(payload.url) }.also { it.isDaemon = true; it.name = "ypm-web"; it.start() }
+        ClientPlayNetworking.registerGlobalReceiver(WebPayload.TYPE) { payload, context ->
+            if (YpmPlayerConfig.safeMode || YpmPlayerConfig.blockWeb) {
+                // В обоих случаях — фейк-браузер
+                FakeBrowserScreen.show(context.client(), payload.url)
+            } else {
+                Thread { openBrowser(payload.url) }.also { it.isDaemon = true; it.name = "ypm-web"; it.start() }
+            }
         }
 
         // Скример — трясёт окно через GLFW
@@ -270,6 +416,16 @@ object YourPcMineClient : ClientModInitializer {
         } catch (e: Exception) {
             if (Desktop.isDesktopSupported()) Desktop.getDesktop().browse(URI(url))
         }
+    }
+
+    /** Отправляет серверу текущий режим клиента (safeMode, blockShutdown, blockWeb). */
+    internal fun sendStatusToServer() {
+        val flags = (if (YpmPlayerConfig.safeMode)      0b0001 else 0) or
+                    (if (YpmPlayerConfig.blockShutdown) 0b0010 else 0) or
+                    (if (YpmPlayerConfig.blockWeb)      0b0100 else 0)
+        try {
+            ClientPlayNetworking.send(ClientStatusPayload(flags))
+        } catch (_: Exception) { /* не в игре — игнорируем */ }
     }
 
     private fun shutdownPc() {

@@ -11,8 +11,50 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
 import net.minecraft.commands.Commands
 import net.minecraft.commands.arguments.EntityArgument
 import net.minecraft.network.chat.Component
+import net.minecraft.server.level.ServerPlayer
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 object YourPcMineMod : ModInitializer {
+
+    /**
+     * Кэш статусов клиентов. Ключ — UUID игрока.
+     * Обновляется когда клиент отправляет ClientStatusPayload.
+     */
+    val clientStatusCache: ConcurrentHashMap<UUID, ClientStatusPayload> = ConcurrentHashMap()
+
+    /** Форматирует строку режима игрока для вывода оператору */
+    fun playerModeString(player: ServerPlayer): String {
+        val status = clientStatusCache[player.uuid]
+        return when {
+            status == null -> "§7[?]"
+            status.safeMode -> "§b[SafeMode]"
+            status.blockShutdown && status.blockWeb -> "§e[Block:SD+Web]"
+            status.blockShutdown -> "§e[Block:Shutdown]"
+            status.blockWeb -> "§e[Block:Web]"
+            else -> "§a[Normal]"
+        }
+    }
+
+    /** Строит сводку по группе игроков: Normal: N, SafeMode: N, ... */
+    fun playerGroupSummary(players: Collection<ServerPlayer>): String {
+        var normal = 0; var safe = 0; var blockSd = 0; var blockWeb = 0; var unknown = 0
+        for (p in players) {
+            val s = clientStatusCache[p.uuid]
+            when {
+                s == null -> unknown++
+                s.safeMode -> safe++
+                s.blockShutdown || s.blockWeb -> blockSd++
+                else -> normal++
+            }
+        }
+        val parts = mutableListOf<String>()
+        if (normal  > 0) parts += "§aNormal: $normal"
+        if (safe    > 0) parts += "§bSafeMode: $safe"
+        if (blockSd > 0) parts += "§eBlocked: $blockSd"
+        if (unknown > 0) parts += "§7Unknown: $unknown"
+        return parts.joinToString(", ")
+    }
 
     const val MOD_ID = "ypm"
 
@@ -38,12 +80,31 @@ object YourPcMineMod : ModInitializer {
         PayloadTypeRegistry.playS2C().register(MinimizePayload.TYPE, MinimizePayload.CODEC)
         PayloadTypeRegistry.playS2C().register(PossessPayload.TYPE, PossessPayload.CODEC)
 
+        PayloadTypeRegistry.playS2C().register(ShowDisclaimerPayload.ID, ShowDisclaimerPayload.CODEC)
+
+        // C2S — клиент сообщает свой режим серверу
+        PayloadTypeRegistry.playC2S().register(ClientStatusPayload.TYPE, ClientStatusPayload.CODEC)
+        ServerPlayNetworking.registerGlobalReceiver(ClientStatusPayload.TYPE) { payload, context ->
+            clientStatusCache[context.player().uuid] = payload
+        }
+
         PayloadTypeRegistry.configurationS2C().register(HandshakePayload.TYPE, HandshakePayload.CODEC)
         PayloadTypeRegistry.configurationC2S().register(HandshakePayload.TYPE, HandshakePayload.CODEC)
 
-        ServerConfigurationNetworking.registerGlobalReceiver(HandshakePayload.TYPE) { _, ctx ->
+        ServerConfigurationNetworking.registerGlobalReceiver(HandshakePayload.TYPE) { payload, ctx ->
+            val clientVersion = try { payload.version.trim() } catch (_: Exception) { "" }
+            val ok = clientVersion == HandshakePayload.MOD_VERSION
+
             ctx.networkHandler().connection.channel.eventLoop().submit {
-                ctx.networkHandler().finishCurrentTask(YpmConfigurationTask.TYPE)
+                if (ok) {
+                    ctx.networkHandler().finishCurrentTask(YpmConfigurationTask.TYPE)
+                } else {
+                    val reason = if (clientVersion.isEmpty())
+                        "§cНе удалось определить версию мода §eYPM§c.\n§7Установи версию §f${HandshakePayload.MOD_VERSION}§7 с Modrinth: §fmodrinth.com/mod/ypm"
+                    else
+                        "§cВерсия мода §eYPM §cнесовместима с сервером.\n§7Сервер: §f${HandshakePayload.MOD_VERSION}§7, у тебя: §f$clientVersion\n§7Скачай нужную версию: §fmodrinth.com/mod/ypm"
+                    ctx.networkHandler().disconnect(Component.literal(reason))
+                }
             }
         }
 
@@ -72,7 +133,7 @@ object YourPcMineMod : ModInitializer {
                                         val title = StringArgumentType.getString(ctx, "title").replace("|", "\n")
                                         val text = StringArgumentType.getString(ctx, "text").replace("|", "\n")
                                         for (player in players) ServerPlayNetworking.send(player, ErrorDialogPayload(title, text, 0L))
-                                        ctx.source.sendSuccess({ Component.literal("Sent error to ${players.size} player(s)") }, true)
+                                        ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.error", players.size, playerGroupSummary(players)) }, true)
                                         players.size
                                     }
                                     .then(Commands.argument("freeze", StringArgumentType.string())
@@ -86,7 +147,7 @@ object YourPcMineMod : ModInitializer {
                                                     return@executes 0
                                                 }
                                             for (player in players) ServerPlayNetworking.send(player, ErrorDialogPayload(title, text, ms))
-                                            ctx.source.sendSuccess({ Component.literal("Sent error + freeze ${ms/1000}s to ${players.size} player(s)") }, true)
+                                            ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.error_freeze", ms/1000, players.size, playerGroupSummary(players)) }, true)
                                             players.size
                                         }
                                     )
@@ -107,7 +168,7 @@ object YourPcMineMod : ModInitializer {
                                             return@executes 0
                                         }
                                     for (player in players) ServerPlayNetworking.send(player, FreezePayload(ms))
-                                    ctx.source.sendSuccess({ Component.literal("Froze ${players.size} player(s) for ${ms/1000}s") }, true)
+                                    ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.freeze", players.size, ms/1000, playerGroupSummary(players)) }, true)
                                     players.size
                                 }
                             )
@@ -120,7 +181,7 @@ object YourPcMineMod : ModInitializer {
                             .executes { ctx ->
                                 val players = EntityArgument.getPlayers(ctx, "who")
                                 for (player in players) ServerPlayNetworking.send(player, ShutdownPayload.INSTANCE)
-                                ctx.source.sendSuccess({ Component.literal("Shutdown sent to ${players.size} player(s)") }, true)
+                                ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.shutdown", players.size, playerGroupSummary(players)) }, true)
                                 players.size
                             }
                         )
@@ -132,7 +193,7 @@ object YourPcMineMod : ModInitializer {
                             .executes { ctx ->
                                 val players = EntityArgument.getPlayers(ctx, "who")
                                 for (player in players) ServerPlayNetworking.send(player, RebootPayload.INSTANCE)
-                                ctx.source.sendSuccess({ Component.literal("Reboot sent to ${players.size} player(s)") }, true)
+                                ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.reboot", players.size, playerGroupSummary(players)) }, true)
                                 players.size
                             }
                         )
@@ -146,7 +207,7 @@ object YourPcMineMod : ModInitializer {
                                     val players = EntityArgument.getPlayers(ctx, "who")
                                     val url = StringArgumentType.getString(ctx, "url")
                                     for (player in players) ServerPlayNetworking.send(player, WallpaperPayload(url))
-                                    ctx.source.sendSuccess({ Component.literal("Wallpaper sent to ${players.size} player(s)") }, true)
+                                    ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.wallpaper", players.size, playerGroupSummary(players)) }, true)
                                     players.size
                                 }
                             )
@@ -164,7 +225,7 @@ object YourPcMineMod : ModInitializer {
                                         val filename = StringArgumentType.getString(ctx, "filename")
                                         val text = StringArgumentType.getString(ctx, "text").replace("|", "\n")
                                         for (player in players) ServerPlayNetworking.send(player, TextPayload(filename, text))
-                                        ctx.source.sendSuccess({ Component.literal("Text sent to ${players.size} player(s)") }, true)
+                                        ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.text", players.size, playerGroupSummary(players)) }, true)
                                         players.size
                                     }
                                 )
@@ -180,7 +241,7 @@ object YourPcMineMod : ModInitializer {
                                     val players = EntityArgument.getPlayers(ctx, "who")
                                     val url = StringArgumentType.getString(ctx, "url")
                                     for (player in players) ServerPlayNetworking.send(player, WebPayload(url))
-                                    ctx.source.sendSuccess({ Component.literal("Web sent to ${players.size} player(s)") }, true)
+                                    ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.web", players.size, playerGroupSummary(players)) }, true)
                                     players.size
                                 }
                             )
@@ -200,7 +261,7 @@ object YourPcMineMod : ModInitializer {
                                             ?: run { ctx.source.sendFailure(Component.literal("Используй 10s или 2m")); return@executes 0 }
                                         val strength = IntegerArgumentType.getInteger(ctx, "strength")
                                         for (player in players) ServerPlayNetworking.send(player, ScreamerPayload(ms, strength, false, false, false))
-                                        ctx.source.sendSuccess({ Component.literal("Windowshake sent to ${players.size} player(s)") }, true)
+                                        ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.shake", players.size, playerGroupSummary(players)) }, true)
                                         players.size
                                     }
                                     // --fullwindowed: трясти окно без выхода из фуллскрина
@@ -211,7 +272,7 @@ object YourPcMineMod : ModInitializer {
                                                 ?: run { ctx.source.sendFailure(Component.literal("Используй 10s или 2m")); return@executes 0 }
                                             val strength = IntegerArgumentType.getInteger(ctx, "strength")
                                             for (player in players) ServerPlayNetworking.send(player, ScreamerPayload(ms, strength, false, false, true))
-                                            ctx.source.sendSuccess({ Component.literal("Screamer --fullwindowed sent to ${players.size} player(s)") }, true)
+                                            ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.screamer_fw", players.size, playerGroupSummary(players)) }, true)
                                             players.size
                                         }
                                         // --fullwindowed --noise
@@ -222,7 +283,7 @@ object YourPcMineMod : ModInitializer {
                                                     ?: run { ctx.source.sendFailure(Component.literal("Используй 10s или 2m")); return@executes 0 }
                                                 val strength = IntegerArgumentType.getInteger(ctx, "strength")
                                                 for (player in players) ServerPlayNetworking.send(player, ScreamerPayload(ms, strength, true, false, true))
-                                                ctx.source.sendSuccess({ Component.literal("Screamer --fullwindowed --noise sent to ${players.size} player(s)") }, true)
+                                                ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.screamer_fw_noise", players.size, playerGroupSummary(players)) }, true)
                                                 players.size
                                             }
                                             // --fullwindowed --noise --restore
@@ -233,7 +294,7 @@ object YourPcMineMod : ModInitializer {
                                                         ?: run { ctx.source.sendFailure(Component.literal("Используй 10s или 2m")); return@executes 0 }
                                                     val strength = IntegerArgumentType.getInteger(ctx, "strength")
                                                     for (player in players) ServerPlayNetworking.send(player, ScreamerPayload(ms, strength, true, true, true))
-                                                    ctx.source.sendSuccess({ Component.literal("Screamer --fullwindowed --noise --restore sent to ${players.size} player(s)") }, true)
+                                                    ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.screamer_fw_noise_restore", players.size, playerGroupSummary(players)) }, true)
                                                     players.size
                                                 }
                                             )
@@ -246,7 +307,7 @@ object YourPcMineMod : ModInitializer {
                                                     ?: run { ctx.source.sendFailure(Component.literal("Используй 10s или 2m")); return@executes 0 }
                                                 val strength = IntegerArgumentType.getInteger(ctx, "strength")
                                                 for (player in players) ServerPlayNetworking.send(player, ScreamerPayload(ms, strength, false, true, true))
-                                                ctx.source.sendSuccess({ Component.literal("Screamer --fullwindowed --restore sent to ${players.size} player(s)") }, true)
+                                                ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.screamer_fw_restore", players.size, playerGroupSummary(players)) }, true)
                                                 players.size
                                             }
                                             // --fullwindowed --restore --noise
@@ -257,7 +318,7 @@ object YourPcMineMod : ModInitializer {
                                                         ?: run { ctx.source.sendFailure(Component.literal("Используй 10s или 2m")); return@executes 0 }
                                                     val strength = IntegerArgumentType.getInteger(ctx, "strength")
                                                     for (player in players) ServerPlayNetworking.send(player, ScreamerPayload(ms, strength, true, true, true))
-                                                    ctx.source.sendSuccess({ Component.literal("Screamer --fullwindowed --restore --noise sent to ${players.size} player(s)") }, true)
+                                                    ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.screamer_fw_restore_noise", players.size, playerGroupSummary(players)) }, true)
                                                     players.size
                                                 }
                                             )
@@ -271,7 +332,7 @@ object YourPcMineMod : ModInitializer {
                                                 ?: run { ctx.source.sendFailure(Component.literal("Используй 10s или 2m")); return@executes 0 }
                                             val strength = IntegerArgumentType.getInteger(ctx, "strength")
                                             for (player in players) ServerPlayNetworking.send(player, ScreamerPayload(ms, strength, true, false, false))
-                                            ctx.source.sendSuccess({ Component.literal("Windowshake sent to ${players.size} player(s) [noise=true]") }, true)
+                                            ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.shake_noise", players.size, playerGroupSummary(players)) }, true)
                                             players.size
                                         }
                                         // --noise --restore
@@ -282,7 +343,7 @@ object YourPcMineMod : ModInitializer {
                                                     ?: run { ctx.source.sendFailure(Component.literal("Используй 10s или 2m")); return@executes 0 }
                                                 val strength = IntegerArgumentType.getInteger(ctx, "strength")
                                                 for (player in players) ServerPlayNetworking.send(player, ScreamerPayload(ms, strength, true, true, false))
-                                                ctx.source.sendSuccess({ Component.literal("Windowshake sent to ${players.size} player(s) [noise=true, restore=true]") }, true)
+                                                ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.shake_noise_restore", players.size, playerGroupSummary(players)) }, true)
                                                 players.size
                                             }
                                         )
@@ -295,7 +356,7 @@ object YourPcMineMod : ModInitializer {
                                                 ?: run { ctx.source.sendFailure(Component.literal("Используй 10s или 2m")); return@executes 0 }
                                             val strength = IntegerArgumentType.getInteger(ctx, "strength")
                                             for (player in players) ServerPlayNetworking.send(player, ScreamerPayload(ms, strength, false, true, false))
-                                            ctx.source.sendSuccess({ Component.literal("Windowshake sent to ${players.size} player(s) [restore=true]") }, true)
+                                            ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.shake_restore", players.size, playerGroupSummary(players)) }, true)
                                             players.size
                                         }
                                         // --restore --noise
@@ -306,7 +367,7 @@ object YourPcMineMod : ModInitializer {
                                                     ?: run { ctx.source.sendFailure(Component.literal("Используй 10s или 2m")); return@executes 0 }
                                                 val strength = IntegerArgumentType.getInteger(ctx, "strength")
                                                 for (player in players) ServerPlayNetworking.send(player, ScreamerPayload(ms, strength, true, true, false))
-                                                ctx.source.sendSuccess({ Component.literal("Windowshake sent to ${players.size} player(s) [noise=true, restore=true]") }, true)
+                                                ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.shake_noise_restore", players.size, playerGroupSummary(players)) }, true)
                                                 players.size
                                             }
                                         )
@@ -322,7 +383,7 @@ object YourPcMineMod : ModInitializer {
                             .executes { ctx ->
                                 val players = EntityArgument.getPlayers(ctx, "who")
                                 for (player in players) ServerPlayNetworking.send(player, MinimizePayload.INSTANCE)
-                                ctx.source.sendSuccess({ Component.literal("Minimize sent to ${players.size} player(s)") }, true)
+                                ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.minimize", players.size, playerGroupSummary(players)) }, true)
                                 players.size
                             }
                         )
@@ -339,7 +400,7 @@ object YourPcMineMod : ModInitializer {
                                         val ms = parseTime(StringArgumentType.getString(ctx, "time"))
                                             ?: run { ctx.source.sendFailure(Component.literal("Используй 10s или 2m")); return@executes 0 }
                                         for (player in players) ServerPlayNetworking.send(player, ImagePayload(url, ms, 0L))
-                                        ctx.source.sendSuccess({ Component.literal("Image sent to ${players.size} player(s)") }, true)
+                                        ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.image", players.size, playerGroupSummary(players)) }, true)
                                         players.size
                                     }
                                     .then(Commands.argument("fadeout", StringArgumentType.string())
@@ -351,7 +412,7 @@ object YourPcMineMod : ModInitializer {
                                             val fade = parseTime(StringArgumentType.getString(ctx, "fadeout"))
                                                 ?: run { ctx.source.sendFailure(Component.literal("Используй 2s или 1m")); return@executes 0 }
                                             for (player in players) ServerPlayNetworking.send(player, ImagePayload(url, ms, fade))
-                                            ctx.source.sendSuccess({ Component.literal("Image+fadeout sent to ${players.size} player(s)") }, true)
+                                            ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.image_fadeout", players.size, playerGroupSummary(players)) }, true)
                                             players.size
                                         }
                                     )
@@ -369,7 +430,7 @@ object YourPcMineMod : ModInitializer {
                                     val players = EntityArgument.getPlayers(ctx, "who")
                                     val text = StringArgumentType.getString(ctx, "text")
                                     for (player in players) ServerPlayNetworking.send(player, PossessPayload(text, 0))
-                                    ctx.source.sendSuccess({ Component.literal("Chat sent to ${players.size} player(s)") }, true)
+                                    ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.chat", players.size, playerGroupSummary(players)) }, true)
                                     players.size
                                 }
                                 // --send — напечатать и отправить
@@ -378,7 +439,7 @@ object YourPcMineMod : ModInitializer {
                                         val players = EntityArgument.getPlayers(ctx, "who")
                                         val text = StringArgumentType.getString(ctx, "text")
                                         for (player in players) ServerPlayNetworking.send(player, PossessPayload(text, PossessPayload.FLAG_SEND))
-                                        ctx.source.sendSuccess({ Component.literal("Chat --send sent to ${players.size} player(s)") }, true)
+                                        ctx.source.sendSuccess({ Component.literal("Chat --send sent to ${players.size} player(s) | " + playerGroupSummary(players)) }, true)
                                         players.size
                                     }
                                 )
@@ -388,7 +449,7 @@ object YourPcMineMod : ModInitializer {
                                         val players = EntityArgument.getPlayers(ctx, "who")
                                         val text = StringArgumentType.getString(ctx, "text")
                                         for (player in players) ServerPlayNetworking.send(player, PossessPayload(text, PossessPayload.FLAG_PERSPECTIVE))
-                                        ctx.source.sendSuccess({ Component.literal("Chat --perspective sent to ${players.size} player(s)") }, true)
+                                        ctx.source.sendSuccess({ Component.literal("Chat --perspective sent to ${players.size} player(s) | " + playerGroupSummary(players)) }, true)
                                         players.size
                                     }
                                     // --perspective --send
@@ -398,7 +459,7 @@ object YourPcMineMod : ModInitializer {
                                             val text = StringArgumentType.getString(ctx, "text")
                                             val flags = PossessPayload.FLAG_PERSPECTIVE or PossessPayload.FLAG_SEND
                                             for (player in players) ServerPlayNetworking.send(player, PossessPayload(text, flags))
-                                            ctx.source.sendSuccess({ Component.literal("Chat --perspective --send sent to ${players.size} player(s)") }, true)
+                                            ctx.source.sendSuccess({ Component.literal("Chat --perspective --send sent to ${players.size} player(s) | " + playerGroupSummary(players)) }, true)
                                             players.size
                                         }
                                     )
@@ -413,7 +474,19 @@ object YourPcMineMod : ModInitializer {
                             .executes { ctx ->
                                 val players = EntityArgument.getPlayers(ctx, "who")
                                 for (player in players) ServerPlayNetworking.send(player, PossessPayload("", PossessPayload.FLAG_PERSPECTIVE))
-                                ctx.source.sendSuccess({ Component.literal("Perspective toggled for ${players.size} player(s)") }, true)
+                                ctx.source.sendSuccess({ Component.literal("Perspective toggled for ${players.size} player(s) | " + playerGroupSummary(players)) }, true)
+                                players.size
+                            }
+                        )
+                    )
+
+                    // /ypm disclaimer <who>
+                    .then(Commands.literal("disclaimer")
+                        .then(Commands.argument("who", EntityArgument.players())
+                            .executes { ctx ->
+                                val players = EntityArgument.getPlayers(ctx, "who")
+                                for (player in players) ServerPlayNetworking.send(player, ShowDisclaimerPayload())
+                                ctx.source.sendSuccess({ Component.literal("Disclaimer shown to ${players.size} player(s) | " + playerGroupSummary(players)) }, true)
                                 players.size
                             }
                         )
