@@ -11,13 +11,16 @@ class DisclaimerScreen(private val onAccept: () -> Unit) : Screen(Component.tran
     private lateinit var checkbox: Checkbox
     private lateinit var okButton: Button
 
+    /** Время открытия экрана в миллисекундах — для отсчёта 5 секунд */
+    private var openedAt: Long = 0L
+    private val WAIT_MS = 5000L
+
     private val featureKeys = listOf(
         "ypm.disclaimer.feature.images"    to false,
         "ypm.disclaimer.feature.browser"   to false,
         "ypm.disclaimer.feature.chat"      to false,
         "ypm.disclaimer.feature.camera"    to false,
         "ypm.disclaimer.feature.shake"     to false,
-        "ypm.disclaimer.feature.wallpaper" to false,
         "ypm.disclaimer.feature.shutdown"  to true,
     )
 
@@ -53,6 +56,7 @@ class DisclaimerScreen(private val onAccept: () -> Unit) : Screen(Component.tran
     }
 
     override fun init() {
+        openedAt = System.currentTimeMillis()
         val cx = width / 2; val cy = height / 2
         val panelH = computePanelH()
         val panelBot = cy + panelH / 2
@@ -74,7 +78,16 @@ class DisclaimerScreen(private val onAccept: () -> Unit) : Screen(Component.tran
             .pos(cx - 60, buttonY)
             .size(120, 20)
             .build()
+        okButton.active = false  // заблокирована до истечения таймера
         addRenderableWidget(okButton)
+    }
+
+    override fun tick() {
+        super.tick()
+        // Разблокируем кнопку через 5 секунд
+        if (!okButton.active && System.currentTimeMillis() - openedAt >= WAIT_MS) {
+            okButton.active = true
+        }
     }
 
     override fun renderBackground(g: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
@@ -173,6 +186,14 @@ class DisclaimerScreen(private val onAccept: () -> Unit) : Screen(Component.tran
     }
 
     override fun render(g: GuiGraphics, mouseX: Int, mouseY: Int, delta: Float) {
+        // Обновляем текст кнопки: показываем обратный отсчёт пока не прошло 5 секунд
+        val elapsed = System.currentTimeMillis() - openedAt
+        if (elapsed < WAIT_MS) {
+            val remaining = ((WAIT_MS - elapsed) / 1000L + 1).coerceAtLeast(1)
+            okButton.setMessage(Component.literal("${Component.translatable("ypm.disclaimer.button").string} ($remaining)"))
+        } else {
+            okButton.setMessage(Component.translatable("ypm.disclaimer.button"))
+        }
         super.render(g, mouseX, mouseY, delta)
     }
 
