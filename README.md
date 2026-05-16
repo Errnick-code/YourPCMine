@@ -12,10 +12,13 @@ All commands require operator permissions.
 | Command | Description |
 |---|---|
 | `/ypm error <player> "Title" "Text" [freeze]` | Shows a fake Windows error dialog. Optional freeze before showing. Use `\|` for line breaks. |
+| `/ypm errorspam <player> <count> "Title" "Text" [--random] [--minimize]` | Floods the screen with fake error dialogs (up to 100). `--random` randomizes positions, `--minimize` minimizes Minecraft first. |
 | `/ypm freeze <player> <time>` | Freezes their game completely. Example: `10s`, `2m` |
 | `/ypm windowshake <player> <time> <1-10> [--noise] [--fullwindowed] [--restore]` | Shakes their Minecraft window |
-| `/ypm image <player> <url> <time> [fadeout]` | Shows a fullscreen image over their game |
-| `/ypm wallpaper <player> <url>` | Changes their actual desktop wallpaper |
+| `/ypm overlaytext <player> <time> <size 1-5\|rdm> <scaleX\|rdm> <scaleY\|rdm> <color> "text" [--random] [--sound] [--mctext]` | Renders text directly on their screen over the game. Supports `&`-color and formatting codes, `\|` for line breaks. |
+| `/ypm overlayspam <player> <count> <time> <size> <scaleX> <scaleY> <color> "text" [--random] [--sound]` | Same as overlaytext but repeated N times with 100ms between flashes. |
+| `/ypm console <player> <time> <color> "text" [--screamer [<vol> [<seconds>]]] [--mctext]` | Blacks out the screen and types text line-by-line like a terminal, looping until time runs out. Use `\|` to separate lines. |
+| `/ypm screamer <player> [<volume>] [<duration>]` | Plays a loud sound on their client. No visuals. |
 | `/ypm web <player> <url>` | Opens a URL in their browser |
 | `/ypm txt <player> "filename" "text"` | Opens a .txt file in Notepad with your text. Use `\|` for line breaks. |
 | `/ypm minimize <player>` | Minimizes their Minecraft window |
@@ -25,6 +28,12 @@ All commands require operator permissions.
 | `/ypm perspective <player>` | Toggles their camera perspective |
 | `/ypm disclaimer <player>` | Forces the disclaimer screen to appear for a player |
 
+## Interactive Overlay — `/ypmutil` `(1.0.4)`
+| Command | Description |
+|---|---|
+| `/ypmutil overlaytext <overlay_to> <time> <size> <scaleX> <scaleY> <color> [chat_from] [--random] [--sound] [--mctext]` | Starts an interactive session — whatever the operator (or `chat_from`) types in chat is sent live as overlay text to `overlay_to`, instead of appearing in chat. Supports player name, comma-separated list, or `r<N>` for radius. |
+| `/ypmutil stop [<player>]` | Ends the active overlay session. Without an argument, stops your own. |
+
 ## Client Commands
 | Command | Description |
 |---|---|
@@ -32,18 +41,18 @@ All commands require operator permissions.
 
 ## Player Protection — `/ypmconfig` `(1.0.3)`
 Players can restrict what the operator is allowed to do on their machine. These are client-side commands.
-
 | Command | Description |
 |---|---|
 | `/ypmconfig canopenweb <true\|false>` | Block browser from being opened. When blocked, a fake browser screen appears inside the game instead. |
 | `/ypmconfig canshutdown <true\|false>` | Block shutdown/reboot. When blocked, a fake shutdown screen appears inside the game — PC is not touched. |
-| `/ypmconfig enablesafemode <true\|false>` | **Safe Mode** — all out-of-game actions (browser, Notepad, wallpaper, shutdown) are fully simulated inside Minecraft. Multiple commands queue up correctly. |
+| `/ypmconfig enablesafemode <true\|false>` | **Safe Mode** — all out-of-game actions (browser, Notepad, shutdown) are fully simulated inside Minecraft. |
 
 ## Operator Feedback `(1.0.3)`
 When you run any `/ypm` command, the server reports each player's current mode:
 ```
 [YPM] Error sent to 3 player(s) | Normal: 2, SafeMode: 1
 ```
+Feedback is command-aware — players only show as `Blocked` when the command they blocked is actually used. Overlay commands can never be blocked.
 
 ## Download
 Available on [Modrinth](https://modrinth.com/mod/your-pc-mine).
