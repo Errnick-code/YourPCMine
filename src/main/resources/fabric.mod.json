@@ -4,7 +4,7 @@
   "version": "${version}",
   "name": "YPM - Your PC Mine",
   "description": "A tool for creating ARG experiences. Gives server operators control over client effects.",
-  "authors": ["errnicraft"],
+  "authors": ["Errnick_"],
   "contact": {},
   "license": "MIT",
   "environment": "*",

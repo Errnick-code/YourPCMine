@@ -6,11 +6,7 @@ import net.minecraft.network.codec.StreamCodec
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload
 import net.minecraft.resources.Identifier
 
-/**
- * Клиент → сервер: владелец вводит текст в overlay-режиме.
- * Сервер найдёт игрока по [targetName] и отправит ему OverlayTextPayload.
- * Если [targetName] пуст — overlay получает сам отправитель.
- */
+
 data class OverlayTextRequestPayload(
     val targetName: String,
     val text: String,

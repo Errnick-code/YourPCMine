@@ -58,5 +58,12 @@
   "ypm.cmd.sent.screamer_fw_noise": "[YPM] Тряска [полн.экран+шум] отправлена %s игр. | %s",
   "ypm.cmd.sent.screamer_fw_noise_restore": "[YPM] Тряска [полн.+шум+восст.] отправлена %s игр. | %s",
   "ypm.cmd.sent.screamer_fw_restore": "[YPM] Тряска [полн.+восст.] отправлена %s игр. | %s",
-  "ypm.cmd.sent.screamer_fw_restore_noise": "[YPM] Тряска [полн.+восст.+шум] отправлена %s игр. | %s"
+  "ypm.cmd.sent.screamer_fw_restore_noise": "[YPM] Тряска [полн.+восст.+шум] отправлена %s игр. | %s",
+  "ypm.cmd.sent.toast": "[YPM] Toast отправлен %s игр. | %s",
+  "ypm.cmd.sent.msgbox": "[YPM] MsgBox отправлен %s игр. | %s",
+  "ypm.cmd.sent.syssound": "[YPM] SysSound [%s] → %s игр. | %s",
+  "ypm.cmd.sent.colorbars": "[YPM] Цветные полосы → %s игр. | %s",
+  "ypm.cmd.sent.colorbars_tone": "[YPM] Цветные полосы + сигнал → %s игр. | %s",
+  "ypm.cmd.sent.flip": "[YPM] Экран перевёрнут у %s игрока(ов) | %s",
+  "ypm.cmd.sent.invert": "[YPM] Инверсия цветов у %s игрока(ов) | %s"
 }

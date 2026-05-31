@@ -6,15 +6,7 @@ import net.minecraft.network.codec.StreamCodec
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload
 import net.minecraft.resources.Identifier
 
-/**
- * C2S пакет — клиент сообщает серверу о своём режиме.
- * Отправляется при join и при изменении настроек (/ypmconfig).
- * Поле flags — битовая маска:
- *   bit 0 = safeMode
- *   bit 1 = blockShutdown
- *   bit 2 = blockWeb
- *   bit 3 = useNativeWindows
- */
+
 class ClientStatusPayload(val flags: Int) : CustomPacketPayload {
     override fun type(): CustomPacketPayload.Type<ClientStatusPayload> = TYPE
 

@@ -1,5 +1,4 @@
 package dev.errnicraft.ypm
-
 import net.fabricmc.api.EnvType
 import net.fabricmc.api.Environment
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback
@@ -11,37 +10,25 @@ import net.minecraft.resources.Identifier
 import kotlin.math.PI
 import kotlin.math.sin
 import kotlin.random.Random
-
-/**
- * Рендерит overlay-текст и эффект консоли поверх всего HUD.
- *
- * Поддерживает:
- *  - &-коды цвета (&4 = тёмно-красный, &c = красный и т.д.) + §-коды
- *  - --mctext: рендер стандартным шрифтом Minecraft вместо ypm_sans
- *  - случайную позицию, масштаб, цвет
- *  - эффект консоли: чёрный экран + текст строками (нельзя закрыть)
- */
 @Environment(EnvType.CLIENT)
-object OverlayTextRenderer {
-
+class OverlayTextRenderer {
     private val entries = mutableListOf<OverlayEntry>()
     private val lock = Any()
     private var registered = false
-
     private val YPM_FONT = FontDescription.Resource(Identifier.fromNamespaceAndPath("ypm", "ypm_sans"))
-
-    // ── Эффект консоли ────────────────────────────────────────────────────────
     @Volatile private var consoleActive = false
-    private val consoleLines   = mutableListOf<String>()   // все строки текущего сообщения
-    private val consoleVisible = mutableListOf<String>()   // строки которые сейчас видны
+    private val consoleLines   = mutableListOf<String>()
+    private val consoleVisible = mutableListOf<String>()
     private val consoleLock    = Any()
     @Volatile private var consoleColor   = 0xFF00FF00.toInt()
-    @Volatile private var consoleExpire  = 0L   // 0 = бесконечно (весь блок)
+    @Volatile private var consoleExpire  = 0L
     @Volatile private var consoleMcText  = false
-    // Поток-тайпер для построчного показа консоли
     @Volatile private var consoleTyperThread: Thread? = null
-
-    // ── Mapping &-кодов → ARGB цвет ──────────────────────────────────────────
+    @Volatile var colorBarsActive = false
+    @Volatile var colorBarsExpire = 0L
+    @Volatile var colorBarsType   = "smpte"
+    @Volatile var colorBarsLabel  = ""
+    @Volatile var colorBarsCorner = ""
     private val CODE_COLORS = mapOf(
         '0' to 0xFF000000.toInt(),
         '1' to 0xFF0000AA.toInt(),
@@ -60,10 +47,7 @@ object OverlayTextRenderer {
         'e' to 0xFFFFFF55.toInt(),
         'f' to 0xFFFFFFFF.toInt(),
     )
-
-    // Коды форматирования (не цвет) — конвертируются &→§ но не трактуются как цвет
     private val FORMAT_CODES = setOf('l', 'o', 'n', 'm', 'k', 'r')
-
     data class OverlayEntry(
         val lines: List<Component>,
         val argb: Int,
@@ -75,7 +59,6 @@ object OverlayTextRenderer {
         val expireAt: Long,
         val useMcFont: Boolean,
     )
-
     fun register() {
         if (registered) return
         registered = true
@@ -83,23 +66,11 @@ object OverlayTextRenderer {
             render(guiGraphics)
         }
     }
-
-    // ── Парсинг &-кодов и §-кодов ────────────────────────────────────────────
-
-    /**
-     * Извлекает первый &X или §X цветовой код из текста.
-     * Если найден — возвращает соответствующий ARGB, иначе null.
-     */
     fun extractColorCode(text: String): Int? {
         val i = text.indexOfFirst { it == '&' || it == '§' }
         if (i < 0 || i + 1 >= text.length) return null
         return CODE_COLORS[text[i + 1].lowercaseChar()]
     }
-
-    /**
-     * Убирает все &X / §X коды (цвет и форматирование) из строки и возвращает чистый текст.
-     * Используется для измерения ширины.
-     */
     fun stripCodes(text: String): String {
         val sb = StringBuilder()
         var i = 0
@@ -114,13 +85,6 @@ object OverlayTextRenderer {
         }
         return sb.toString()
     }
-
-    /**
-     * Конвертирует &-коды (цвет + форматирование) → §-коды чтобы Minecraft их понял в Component.
-     * Затем оборачивает в Component.literal с нужным шрифтом.
-     * Базовый цвет из color-аргумента передаётся отдельно через [baseArgb] и применяется
-     * только если строка не начинается с собственного цветового кода.
-     */
     private fun buildLineComponent(rawLine: String, useMcFont: Boolean, baseArgb: Int? = null): Component {
         val converted = buildString {
             var i = 0
@@ -135,8 +99,6 @@ object OverlayTextRenderer {
             }
         }
         val comp = Component.literal(converted)
-        // Применяем базовый цвет через Style только если строка не начинает своего цветового кода.
-        // Если строка начинается с §X — Minecraft сам подхватит, не перебиваем.
         val hasOwnColor = converted.length >= 2 && converted[0] == '§'
                 && (CODE_COLORS.containsKey(converted[1].lowercaseChar()))
         val styled = if (!hasOwnColor && baseArgb != null) {
@@ -145,9 +107,6 @@ object OverlayTextRenderer {
         return if (useMcFont) styled
         else styled.withStyle { it.withFont(YPM_FONT) }
     }
-
-    // ── Показ overlay-текста ──────────────────────────────────────────────────
-
     fun show(
         text: String,
         color: String,
@@ -162,13 +121,11 @@ object OverlayTextRenderer {
     ) {
         val baseArgb = parseColor(color)
         val rawLines = text.split("\n")
-
         val font = client.font
         val scrW = client.window.guiScaledWidth
         val scrH = client.window.guiScaledHeight
         val baseScale = sizeToScale(size)
         val rng = Random.Default
-
         val finalScaleX: Float
         val finalScaleY: Float
         if (randomScale) {
@@ -180,22 +137,15 @@ object OverlayTextRenderer {
             finalScaleX = scaleX
             finalScaleY = scaleY
         }
-
-        // Базовый цвет из color-аргумента. Каждая строка получает его как фоновый,
-        // но если строка начинается с собственного &X — он перебивает базовый.
         val lines = rawLines.map { buildLineComponent(it, useMcFont, baseArgb) }
-
         val rawLineW = (lines.maxOfOrNull { font.width(it) } ?: 50)
         val rawH     = 10 * lines.size
-
         val maxAllowedScaleX = if (rawLineW > 0) (scrW.toFloat() / (rawLineW * baseScale)).coerceAtMost(finalScaleX) else finalScaleX
         val maxAllowedScaleY = if (rawH > 0)     (scrH.toFloat() / (rawH     * baseScale)).coerceAtMost(finalScaleY) else finalScaleY
         val csx = maxAllowedScaleX.coerceAtLeast(0.1f)
         val csy = maxAllowedScaleY.coerceAtLeast(0.1f)
-
         val maxLineW = (rawLineW * baseScale * csx).toInt().coerceAtLeast(1)
         val totalH   = (rawH     * baseScale * csy).toInt().coerceAtLeast(1)
-
         val x: Int
         val y: Int
         if (random) {
@@ -205,15 +155,11 @@ object OverlayTextRenderer {
             x = (scrW / 2 - maxLineW / 2).coerceIn(0, (scrW - maxLineW).coerceAtLeast(0))
             y = (scrH / 2 - totalH   / 2).coerceIn(0, (scrH - totalH  ).coerceAtLeast(0))
         }
-
         synchronized(lock) {
             entries.add(OverlayEntry(lines, baseArgb, size, csx, csy, x, y,
                 System.currentTimeMillis() + durationMs, useMcFont))
         }
     }
-
-    // ── Эффект консоли ───────────────────────────────────────────────────────
-
     fun showConsole(
         text: String,
         color: String,
@@ -221,13 +167,8 @@ object OverlayTextRenderer {
         mcText: Boolean = false,
     ) {
         val argb  = parseColor(color)
-        // | = разделитель строк. Каждая строка появляется через 100мс одна за другой,
-        // потом весь цикл повторяется снова (экран очищается и заново).
         val lines = text.split("|").map { it.trim() }
-
-        // Останавливаем предыдущий тайпер если был
         consoleTyperThread?.interrupt()
-
         synchronized(consoleLock) {
             consoleLines.clear()
             consoleLines.addAll(lines)
@@ -237,10 +178,6 @@ object OverlayTextRenderer {
             consoleMcText = mcText
             consoleActive = true
         }
-
-        // Запускаем тайпер: строки добавляются сверху вниз как в реальном терминале.
-        // Когда экран заполнен — продолжаем добавлять (старые уходят вверх за экран).
-        // При истечении времени — стоп, пауза 500мс, закрыть консоль.
         val t = Thread {
             try {
                 while (true) {
@@ -252,31 +189,26 @@ object OverlayTextRenderer {
                         expire    = consoleExpire
                     }
                     if (expire > 0 && System.currentTimeMillis() >= expire) {
-                        // Время вышло — стоп, пауза 500мс, закрыть
                         Thread.sleep(500L)
                         synchronized(consoleLock) { consoleActive = false }
                         return@Thread
                     }
-                    // Добавляем следующую строку снизу, старые уходят вверх
                     for (line in snapLines) {
                         if (Thread.interrupted()) return@Thread
                         val nowExpire: Long
                         synchronized(consoleLock) {
                             if (!consoleActive) return@Thread
                             consoleVisible.add(line)
-                            // Ограничиваем буфер — держим последние 200 строк чтобы не течь памятью
                             if (consoleVisible.size > 200) consoleVisible.removeAt(0)
                             nowExpire = consoleExpire
                         }
                         if (nowExpire > 0 && System.currentTimeMillis() >= nowExpire) {
-                            // Время вышло посреди строки — стоп, пауза 500мс, закрыть
                             Thread.sleep(500L)
                             synchronized(consoleLock) { consoleActive = false }
                             return@Thread
                         }
-                        Thread.sleep(200L)  // скорость вывода строк: 0.2 сек
+                        Thread.sleep(200L)
                     }
-                    // Цикл заново — продолжаем добавлять строки бесконечно
                 }
             } catch (_: InterruptedException) { }
         }
@@ -285,7 +217,6 @@ object OverlayTextRenderer {
         consoleTyperThread = t
         t.start()
     }
-
     fun clearConsole() {
         consoleTyperThread?.interrupt()
         consoleTyperThread = null
@@ -295,13 +226,26 @@ object OverlayTextRenderer {
             consoleVisible.clear()
         }
     }
-
-    // ── Рендер ───────────────────────────────────────────────────────────────
-
     private fun render(guiGraphics: GuiGraphics) {
         val now = System.currentTimeMillis()
-
-        // 1. Консоль — рендерится первой (под текстом, но выше игры)
+        if (colorBarsActive) {
+            if (colorBarsExpire > 0 && now >= colorBarsExpire) {
+                colorBarsActive = false
+            } else {
+                when (colorBarsType) {
+                    "hd"     -> renderColorBarsHd(guiGraphics)
+                    "ebu"    -> renderColorBarsEbu(guiGraphics)
+                    "pluge"  -> renderColorBarsPluge(guiGraphics)
+                    "mono"   -> renderColorBarsMono(guiGraphics)
+                    "rgb"    -> renderColorBarsRgb(guiGraphics)
+                    else     -> renderColorBars(guiGraphics)
+                }
+                if (colorBarsLabel.isNotEmpty()) {
+                    renderColorBarsLabel(guiGraphics, colorBarsLabel, colorBarsCorner)
+                }
+                return
+            }
+        }
         synchronized(consoleLock) {
             if (consoleActive) {
                 if (consoleExpire > 0 && now >= consoleExpire) {
@@ -311,56 +255,279 @@ object OverlayTextRenderer {
                 }
             }
         }
-
-        // 2. Обычные overlay-записи
         val active: List<OverlayEntry>
         synchronized(lock) {
             entries.removeAll { it.expireAt <= now }
             active = entries.toList()
         }
         if (active.isEmpty()) return
-
         val client = Minecraft.getInstance()
-
         for (entry in active) {
             val baseScale = sizeToScale(entry.size)
             val pose = guiGraphics.pose()
             pose.pushMatrix()
             pose.translate(entry.x.toFloat(), entry.y.toFloat())
             pose.scale(baseScale * entry.scaleX, baseScale * entry.scaleY)
-
             entry.lines.forEachIndexed { i, line ->
                 guiGraphics.drawString(client.font, line, 0, i * 10, entry.argb, true)
             }
-
             pose.popMatrix()
         }
     }
-
+    private fun renderColorBars(guiGraphics: GuiGraphics) {
+        val client = Minecraft.getInstance()
+        val w = client.window.guiScaledWidth
+        val h = client.window.guiScaledHeight
+        val topH = h * 2 / 3
+        val topColors = intArrayOf(
+            0xFFBEBEBE.toInt(),
+            0xFFBEBE00.toInt(),
+            0xFF00BEBE.toInt(),
+            0xFF00BE00.toInt(),
+            0xFFBE00BE.toInt(),
+            0xFFBE0000.toInt(),
+            0xFF0000BE.toInt(),
+        )
+        val barW = w.toFloat() / topColors.size
+        topColors.forEachIndexed { i, color ->
+            guiGraphics.fill((i * barW).toInt(), 0, ((i + 1) * barW).toInt(), topH, color)
+        }
+        val midY0 = topH
+        val midY1 = h * 3 / 4
+        val midColors = intArrayOf(
+            0xFF0000BE.toInt(), 0xFF131313.toInt(), 0xFFBE00BE.toInt(),
+            0xFF131313.toInt(), 0xFF00BEBE.toInt(), 0xFF131313.toInt(), 0xFF131313.toInt(),
+        )
+        midColors.forEachIndexed { i, color ->
+            guiGraphics.fill((i * barW).toInt(), midY0, ((i + 1) * barW).toInt(), midY1, color)
+        }
+        val botY0 = midY1
+        val botY1 = h
+        val leftW = w * 3 / 4
+        val subW  = leftW.toFloat() / 4
+        val subColors = intArrayOf(
+            0xFF131B4C.toInt(),
+            0xFFFFFFFF.toInt(),
+            0xFF2C1048.toInt(),
+            0xFF0D0D0D.toInt(),
+        )
+        subColors.forEachIndexed { i, color ->
+            guiGraphics.fill((i * subW).toInt(), botY0, ((i + 1) * subW).toInt(), botY1, color)
+        }
+        val plugeW = (w - leftW).toFloat() / 3
+        val plugeColors = intArrayOf(0xFF040404.toInt(), 0xFF0D0D0D.toInt(), 0xFF1C1C1C.toInt())
+        plugeColors.forEachIndexed { i, color ->
+            guiGraphics.fill(leftW + (i * plugeW).toInt(), botY0, leftW + ((i + 1) * plugeW).toInt(), botY1, color)
+        }
+    }
+    private fun fillGradientH(
+        guiGraphics: GuiGraphics,
+        x0: Int, y0: Int, x1: Int, y1: Int,
+        colorLeft: Int, colorRight: Int,
+        steps: Int = 64
+    ) {
+        val rL = (colorLeft  shr 16 and 0xFF).toFloat()
+        val gL = (colorLeft  shr  8 and 0xFF).toFloat()
+        val bL = (colorLeft         and 0xFF).toFloat()
+        val rR = (colorRight shr 16 and 0xFF).toFloat()
+        val gR = (colorRight shr  8 and 0xFF).toFloat()
+        val bR = (colorRight        and 0xFF).toFloat()
+        val totalW = (x1 - x0).toFloat()
+        for (s in 0 until steps) {
+            val t  = (s + 0.5f) / steps
+            val px0 = x0 + (s.toFloat()       / steps * totalW).toInt()
+            val px1 = x0 + ((s + 1).toFloat() / steps * totalW).toInt()
+            val r  = (rL + (rR - rL) * t).toInt().coerceIn(0, 255)
+            val g  = (gL + (gR - gL) * t).toInt().coerceIn(0, 255)
+            val b  = (bL + (bR - bL) * t).toInt().coerceIn(0, 255)
+            guiGraphics.fill(px0, y0, px1, y1, (0xFF shl 24) or (r shl 16) or (g shl 8) or b)
+        }
+    }
+    private fun renderColorBarsHd(guiGraphics: GuiGraphics) {
+        val client = Minecraft.getInstance()
+        val w = client.window.guiScaledWidth
+        val h = client.window.guiScaledHeight
+        val row1H = h * 7 / 12
+        val row2H = h * 8 / 12
+        val row3H = h * 9 / 12
+        val sideW  = w / 7
+        val midW   = w - sideW * 2
+        val cBarW  = midW.toFloat() / 7
+        guiGraphics.fill(0,         0, sideW,    row1H, 0xFF666666.toInt())
+        guiGraphics.fill(w - sideW, 0, w,        row1H, 0xFF666666.toInt())
+        val centerColors = intArrayOf(
+            0xFFBEBEBE.toInt(), 0xFFBEBE00.toInt(), 0xFF00BEBE.toInt(),
+            0xFF00BE00.toInt(), 0xFFBE00BE.toInt(), 0xFFBE0000.toInt(), 0xFF0000BE.toInt(),
+        )
+        centerColors.forEachIndexed { i, color ->
+            val x0 = sideW + (i * cBarW).toInt()
+            val x1 = sideW + ((i + 1) * cBarW).toInt()
+            guiGraphics.fill(x0, 0, x1, row1H, color)
+        }
+        guiGraphics.fill(0,            row1H, sideW,         row2H, 0xFF00FFFF.toInt())
+        guiGraphics.fill(sideW,        row1H, sideW * 2,     row2H, 0xFF666666.toInt())
+        val gx0 = sideW * 2; val gx1 = w - sideW
+        val gMid = (gx0 + gx1) / 2
+        fillGradientH(guiGraphics, gx0, row1H, gMid, row2H, 0xFF303030.toInt(), 0xFFBEBEBE.toInt())
+        fillGradientH(guiGraphics, gMid, row1H, gx1, row2H, 0xFFBEBEBE.toInt(), 0xFF303030.toInt())
+        guiGraphics.fill(w - sideW,    row1H, w,             row2H, 0xFF0000FF.toInt())
+        guiGraphics.fill(0,         row2H, sideW,     row3H, 0xFFFFFF00.toInt())
+        fillGradientH(guiGraphics, sideW, row2H, w - sideW, row3H, 0xFF000000.toInt(), 0xFFFFFFFF.toInt())
+        guiGraphics.fill(w - sideW, row2H, w,         row3H, 0xFFFF0000.toInt())
+        val botGrayW = w / 7
+        val whiteW   = w / 4
+        val whiteX0  = (w - whiteW) / 2
+        guiGraphics.fill(0,           row3H, w,              h, 0xFF0D0D0D.toInt())
+        guiGraphics.fill(0,           row3H, botGrayW,       h, 0xFF262626.toInt())
+        guiGraphics.fill(w-botGrayW,  row3H, w,              h, 0xFF262626.toInt())
+        guiGraphics.fill(whiteX0,     row3H, whiteX0+whiteW, h, 0xFFFFFFFF.toInt())
+    }
+    private fun renderColorBarsEbu(guiGraphics: GuiGraphics) {
+        val client = Minecraft.getInstance()
+        val w = client.window.guiScaledWidth
+        val h = client.window.guiScaledHeight
+        val topH = h * 3 / 4
+        val topColors = intArrayOf(
+            0xFFFFFFFF.toInt(),
+            0xFFFFFF00.toInt(),
+            0xFF00FFFF.toInt(),
+            0xFF00FF00.toInt(),
+            0xFFFF00FF.toInt(),
+            0xFFFF0000.toInt(),
+            0xFF0000FF.toInt(),
+            0xFF000000.toInt(),
+        )
+        val barW = w.toFloat() / topColors.size
+        topColors.forEachIndexed { i, color ->
+            guiGraphics.fill((i * barW).toInt(), 0, ((i + 1) * barW).toInt(), topH, color)
+        }
+        val botY0 = topH
+        val botColors = intArrayOf(
+            0xFF000000.toInt(),
+            0xFFFFFFFF.toInt(),
+            0xFF000000.toInt(),
+            0xFF00FFFF.toInt(),
+            0xFF000000.toInt(),
+            0xFFFF0000.toInt(),
+            0xFF000000.toInt(),
+            0xFF000000.toInt(),
+        )
+        botColors.forEachIndexed { i, color ->
+            guiGraphics.fill((i * barW).toInt(), botY0, ((i + 1) * barW).toInt(), h, color)
+        }
+    }
+    private fun renderColorBarsPluge(guiGraphics: GuiGraphics) {
+        val client = Minecraft.getInstance()
+        val w = client.window.guiScaledWidth
+        val h = client.window.guiScaledHeight
+        guiGraphics.fill(0, 0, w, h, 0xFF808080.toInt())
+        val greyBars = 8
+        val greyW = w * 2 / 3
+        val gBarW = greyW.toFloat() / greyBars
+        for (i in 0 until greyBars) {
+            val lum = (i * 255 / (greyBars - 1)).coerceIn(0, 255)
+            val color = (0xFF shl 24) or (lum shl 16) or (lum shl 8) or lum
+            guiGraphics.fill((i * gBarW).toInt(), 0, ((i + 1) * gBarW).toInt(), h, color)
+        }
+        val plugeX = greyW
+        val plugeW = (w - greyW).toFloat() / 5
+        val plugeColors = intArrayOf(
+            0xFF050505.toInt(),
+            0xFF101010.toInt(),
+            0xFF1A1A1A.toInt(),
+            0xFFE0E0E0.toInt(),
+            0xFFFFFFFF.toInt(),
+        )
+        plugeColors.forEachIndexed { i, color ->
+            val x0 = plugeX + (i * plugeW).toInt()
+            val x1 = plugeX + ((i + 1) * plugeW).toInt()
+            guiGraphics.fill(x0, 0, x1, h, color)
+        }
+    }
+    private fun renderColorBarsMono(guiGraphics: GuiGraphics) {
+        val client = Minecraft.getInstance()
+        val w = client.window.guiScaledWidth
+        val h = client.window.guiScaledHeight
+        val steps = 10
+        val barW = w.toFloat() / steps
+        for (i in 0 until steps) {
+            val lum = (i * 255 / (steps - 1)).coerceIn(0, 255)
+            val color = (0xFF shl 24) or (lum shl 16) or (lum shl 8) or lum
+            guiGraphics.fill((i * barW).toInt(), 0, ((i + 1) * barW).toInt(), h, color)
+        }
+    }
+    private fun renderColorBarsRgb(guiGraphics: GuiGraphics) {
+        val client = Minecraft.getInstance()
+        val w = client.window.guiScaledWidth
+        val h = client.window.guiScaledHeight
+        val colors = intArrayOf(
+            0xFF000000.toInt(),
+            0xFFFF0000.toInt(),
+            0xFF00FF00.toInt(),
+            0xFF0000FF.toInt(),
+            0xFFFFFF00.toInt(),
+            0xFF00FFFF.toInt(),
+            0xFFFF00FF.toInt(),
+            0xFFFFFFFF.toInt(),
+        )
+        val barW = w.toFloat() / colors.size
+        colors.forEachIndexed { i, color ->
+            guiGraphics.fill((i * barW).toInt(), 0, ((i + 1) * barW).toInt(), h, color)
+        }
+    }
+    private fun renderColorBarsLabel(guiGraphics: GuiGraphics, rawText: String, corner: String) {
+        val client = Minecraft.getInstance()
+        val font   = client.font
+        val w      = client.window.guiScaledWidth
+        val h      = client.window.guiScaledHeight
+        val converted = buildString {
+            var idx = 0
+            while (idx < rawText.length) {
+                if (rawText[idx] == '&' && idx + 1 < rawText.length) {
+                    val c = rawText[idx + 1].lowercaseChar()
+                    if (c in '0'..'9' || c in 'a'..'f' || c == 'r' || c == 'l' || c == 'o' || c == 'n' || c == 'k') {
+                        append('§'); append(rawText[idx + 1]); idx += 2; continue
+                    }
+                }
+                append(rawText[idx]); idx++
+            }
+        }
+        val component = Component.literal(converted)
+        val scale  = 3f
+        val textW  = (font.width(component) * scale).toInt()
+        val textH  = (font.lineHeight * scale).toInt()
+        val pad    = 8
+        val anchorX = when {
+            corner.endsWith("r") -> w - pad - textW
+            else                  -> pad
+        }
+        val anchorY = when {
+            corner.startsWith("b") -> h - pad - textH
+            else                   -> pad
+        }
+        val pose = guiGraphics.pose()
+        pose.pushMatrix()
+        pose.translate(anchorX.toFloat(), anchorY.toFloat())
+        pose.scale(scale, scale)
+        guiGraphics.drawString(font, component, 0, 0, 0xFFFFFFFF.toInt(), false)
+        pose.popMatrix()
+    }
     private fun renderConsole(guiGraphics: GuiGraphics, now: Long) {
         val client  = Minecraft.getInstance()
         val scrW    = client.window.guiScaledWidth
         val scrH    = client.window.guiScaledHeight
         val mcText  = consoleMcText
         val font    = client.font
-
-        // Чёрный фон на весь экран (непрозрачный)
         guiGraphics.fill(0, 0, scrW, scrH, 0xFF000000.toInt())
-
-        // Текст: рендерим строки сверху вниз с небольшим отступом
         val lineH   = font.lineHeight + 2
         val padX    = 6
         val padY    = 6
         val maxLine = ((scrH - padY * 2) / lineH).coerceAtLeast(1)
-
-        // Показываем последние maxLine строк
         val displayLines = synchronized(consoleLock) {
             if (consoleVisible.size > maxLine) consoleVisible.takeLast(maxLine)
             else consoleVisible.toList()
         }
-
         displayLines.forEachIndexed { i, rawLine ->
-            // &-коды → §-коды для Minecraft Component
             val converted = buildString {
                 var idx = 0
                 while (idx < rawLine.length) {
@@ -375,18 +542,13 @@ object OverlayTextRenderer {
             }
             val comp = Component.literal(converted)
             if (mcText) {
-                // Ванильный шрифт Minecraft
                 guiGraphics.drawString(font, comp, padX, padY + i * lineH, consoleColor, false)
             } else {
-                // ypm_sans через buildLineComponent
                 val styledComp = buildLineComponent(rawLine, useMcFont = false)
                 guiGraphics.drawString(font, styledComp, padX, padY + i * lineH, consoleColor, false)
             }
         }
     }
-
-    // ── Вспомогательные ──────────────────────────────────────────────────────
-
     private fun sizeToScale(size: Int): Float = when (size) {
         1 -> 0.5f
         2 -> 0.75f
@@ -395,7 +557,6 @@ object OverlayTextRenderer {
         5 -> 2.5f
         else -> 1.0f
     }
-
     fun parseColor(color: String): Int {
         val rgb = when (color.lowercase().trim()) {
             "red"          -> 0xFF5555

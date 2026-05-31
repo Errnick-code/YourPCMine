@@ -6,17 +6,10 @@ import net.minecraft.network.codec.StreamCodec
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload
 import net.minecraft.resources.Identifier
 
-/**
- * Сервер → клиент: установить или сбросить сессию overlay-текста.
- *
- * Если [active] = false — все остальные поля игнорируются, сессия сбрасывается.
- *
- * Пока сессия активна, всё что пишет игрок в чат (не команды!) не отправляется
- * в чат, а уходит как OverlayText с заданными параметрами.
- */
+
 data class OverlaySessionPayload(
     val active: Boolean,
-    /** UUID цели (кому слать overlay). Пусто = самому себе. */
+
     val targetName: String = "",
     val durationMs: Long = 5000L,
     val size: Int = 3,

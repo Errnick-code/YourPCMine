@@ -6,20 +6,7 @@ import net.minecraft.network.codec.StreamCodec
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload
 import net.minecraft.resources.Identifier
 
-/**
- * Спамит overlay-текстом N раз подряд с небольшой задержкой между появлениями.
- *
- * @param text       текст (| = новая строка). Поддерживает &-коды.
- * @param color      цвет
- * @param size       1–5
- * @param scaleX     горизонтальный масштаб (или -1 = rdm)
- * @param scaleY     вертикальный масштаб (или -1 = rdm)
- * @param durationMs длительность каждого появления
- * @param count      сколько раз показать
- * @param random     случайная позиция каждого появления
- * @param randomScale случайный масштаб каждого появления
- * @param sound      воспроизвести звук на каждое появление
- */
+
 data class OverlaySpamPayload(
     val text: String,
     val color: String,

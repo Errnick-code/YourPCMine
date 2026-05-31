@@ -58,5 +58,12 @@
   "ypm.cmd.sent.screamer_fw_noise": "[YPM] Screamer [fullwindow+noise] sent to %s player(s) | %s",
   "ypm.cmd.sent.screamer_fw_noise_restore": "[YPM] Screamer [fw+noise+restore] sent to %s player(s) | %s",
   "ypm.cmd.sent.screamer_fw_restore": "[YPM] Screamer [fullwindow+restore] sent to %s player(s) | %s",
-  "ypm.cmd.sent.screamer_fw_restore_noise": "[YPM] Screamer [fw+restore+noise] sent to %s player(s) | %s"
+  "ypm.cmd.sent.screamer_fw_restore_noise": "[YPM] Screamer [fw+restore+noise] sent to %s player(s) | %s",
+  "ypm.cmd.sent.toast": "[YPM] Toast sent to %s player(s) | %s",
+  "ypm.cmd.sent.msgbox": "[YPM] MsgBox sent to %s player(s) | %s",
+  "ypm.cmd.sent.syssound": "[YPM] SysSound [%s] sent to %s player(s) | %s",
+  "ypm.cmd.sent.colorbars": "[YPM] Color bars sent to %s player(s) | %s",
+  "ypm.cmd.sent.colorbars_tone": "[YPM] Color bars + tone sent to %s player(s) | %s",
+  "ypm.cmd.sent.flip": "[YPM] Screen flipped for %s player(s) | %s",
+  "ypm.cmd.sent.invert": "[YPM] Color invert sent to %s player(s) | %s"
 }

@@ -1,5 +1,4 @@
 package dev.errnicraft.ypm
-
 import com.mojang.brigadier.arguments.IntegerArgumentType
 import com.mojang.brigadier.arguments.StringArgumentType
 import net.fabricmc.api.ModInitializer
@@ -15,16 +14,8 @@ import net.minecraft.server.level.ServerPlayer
 import net.minecraft.server.permissions.Permissions
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
-
 object YourPcMineMod : ModInitializer {
-
-    /**
-     * Кэш статусов клиентов. Ключ — UUID игрока.
-     * Обновляется когда клиент отправляет ClientStatusPayload.
-     */
     val clientStatusCache: ConcurrentHashMap<UUID, ClientStatusPayload> = ConcurrentHashMap()
-
-    /** Форматирует строку режима игрока для вывода оператору */
     fun playerModeString(player: ServerPlayer): String {
         val status = clientStatusCache[player.uuid]
         return when {
@@ -36,18 +27,7 @@ object YourPcMineMod : ModInitializer {
             else -> "§a[Normal]"
         }
     }
-
-    /**
-     * Тип команды — используется для определения того, какие блокировки релевантны.
-     * OVERLAY  — overlaytext, overlayspam, console, screamer, minimize, errorspam, freeze, txt, windowshake, possess, chat
-     * SHUTDOWN — shutdown, reboot
-     * WEB      — web
-     * GENERAL  — всё остальное (показывает все активные блокировки)
-     */
     enum class CmdType { OVERLAY, SHUTDOWN, WEB, GENERAL }
-
-    /** Строит сводку по группе игроков с hover-подсказкой ников для Blocked и SafeMode.
-     *  [cmdType] — тип команды, определяет какие блокировки считать релевантными. */
     fun playerGroupSummaryComponent(
         players: Collection<ServerPlayer>,
         cmdType: CmdType = CmdType.GENERAL,
@@ -56,37 +36,32 @@ object YourPcMineMod : ModInitializer {
         val safeNames     = mutableListOf<String>()
         val blockedNames  = mutableListOf<String>()
         val unknownNames  = mutableListOf<String>()
-
         for (p in players) {
             val s = clientStatusCache[p.uuid]
             val name = p.gameProfile.name
-            // Проверяем заблокирована ли именно эта команда у игрока
             val isBlocked = when (cmdType) {
                 CmdType.SHUTDOWN -> s != null && (s.safeMode || s.blockShutdown)
                 CmdType.WEB      -> s != null && (s.safeMode || s.blockWeb)
-                CmdType.OVERLAY  -> false  // overlay нельзя заблокировать
+                CmdType.OVERLAY  -> false
                 CmdType.GENERAL  -> s != null && (s.blockShutdown || s.blockWeb)
             }
             when {
                 s == null    -> unknownNames += name
-                s.safeMode && cmdType == CmdType.OVERLAY -> normalNames += name  // safeMode не влияет на overlay
+                s.safeMode && cmdType == CmdType.OVERLAY -> normalNames += name
                 s.safeMode   -> safeNames += name
                 isBlocked    -> blockedNames += name
                 else         -> normalNames += name
             }
         }
-
         fun hoverList(names: List<String>) =
             net.minecraft.network.chat.HoverEvent.ShowText(
                 Component.literal(names.joinToString("\n"))
             )
-
         val result = net.minecraft.network.chat.MutableComponent.create(
             net.minecraft.network.chat.contents.PlainTextContents.EMPTY
         )
         var first = true
         fun sep() { if (!first) result.append(Component.literal(", ")); first = false }
-
         if (normalNames.isNotEmpty()) {
             sep()
             result.append(
@@ -117,8 +92,6 @@ object YourPcMineMod : ModInitializer {
         }
         return result
     }
-
-    /** @deprecated используй playerGroupSummaryComponent для hover-подсказок */
     fun playerGroupSummary(players: Collection<ServerPlayer>, cmdType: CmdType = CmdType.GENERAL): String {
         var normal = 0; var safe = 0; var blockSd = 0; var unknown = 0
         for (p in players) {
@@ -144,21 +117,17 @@ object YourPcMineMod : ModInitializer {
         if (unknown > 0) parts += "§7Unknown: $unknown"
         return parts.joinToString(", ")
     }
-
     const val MOD_ID = "ypm"
-
     private fun parseSize(input: String): Int {
         val s = input.trim().lowercase()
         if (s == "rdm") return (1..5).random()
         return input.toIntOrNull()?.coerceIn(1, 5) ?: 3
     }
-
     private fun parseScaleArg(input: String): Float {
         val s = input.trim().lowercase()
-        if (s == "rdm") return -1f  // сигнал для рандома на клиенте
+        if (s == "rdm") return -1f
         return input.toFloatOrNull()?.coerceIn(0.1f, 10.0f) ?: 1.0f
     }
-
     private fun sendOverlay(
         ctx: com.mojang.brigadier.context.CommandContext<net.minecraft.commands.CommandSourceStack>,
         randomPos: Boolean,
@@ -182,7 +151,6 @@ object YourPcMineMod : ModInitializer {
         ctx.source.sendSuccess({ Component.literal("OverlayText → ${players.size} | ").append(playerGroupSummaryComponent(players, CmdType.OVERLAY)) }, true)
         return players.size
     }
-
     private fun sendOverlaySpam(
         ctx: com.mojang.brigadier.context.CommandContext<net.minecraft.commands.CommandSourceStack>,
         randomPos: Boolean,
@@ -206,7 +174,6 @@ object YourPcMineMod : ModInitializer {
         ctx.source.sendSuccess({ Component.literal("OverlaySpam x$count → ${players.size} | ").append(playerGroupSummaryComponent(players, CmdType.OVERLAY)) }, true)
         return players.size
     }
-
     private fun sendConsoleOverlay(
         ctx: com.mojang.brigadier.context.CommandContext<net.minecraft.commands.CommandSourceStack>,
         screamer: Boolean,
@@ -230,7 +197,6 @@ object YourPcMineMod : ModInitializer {
         ctx.source.sendSuccess({ Component.literal("Console → ${players.size} | ").append(playerGroupSummaryComponent(players, CmdType.OVERLAY)) }, true)
         return players.size
     }
-
     private fun sendScreamerSound(
         ctx: com.mojang.brigadier.context.CommandContext<net.minecraft.commands.CommandSourceStack>,
         volume: Float,
@@ -244,16 +210,14 @@ object YourPcMineMod : ModInitializer {
         ctx.source.sendSuccess({ Component.literal("Screamer → ${players.size} | ").append(playerGroupSummaryComponent(players, CmdType.OVERLAY)) }, true)
         return players.size
     }
-
     private fun parseTime(input: String): Long? {
         val lower = input.trim().lowercase()
         return when {
-            lower.endsWith("s") -> lower.dropLast(1).toLongOrNull()?.times(1000)
-            lower.endsWith("m") -> lower.dropLast(1).toLongOrNull()?.times(60_000)
+            lower.endsWith("s") -> lower.dropLast(1).toDoubleOrNull()?.let { (it * 1000).toLong() }
+            lower.endsWith("m") -> lower.dropLast(1).toDoubleOrNull()?.let { (it * 60_000).toLong() }
             else -> null
         }
     }
-
     override fun onInitialize() {
         PayloadTypeRegistry.playS2C().register(ErrorDialogPayload.TYPE, ErrorDialogPayload.CODEC)
         PayloadTypeRegistry.playS2C().register(FreezePayload.TYPE, FreezePayload.CODEC)
@@ -269,27 +233,18 @@ object YourPcMineMod : ModInitializer {
         PayloadTypeRegistry.playS2C().register(OverlaySpamPayload.TYPE, OverlaySpamPayload.CODEC)
         PayloadTypeRegistry.playS2C().register(ConsoleOverlayPayload.TYPE, ConsoleOverlayPayload.CODEC)
         PayloadTypeRegistry.playS2C().register(ScreamerSoundPayload.TYPE, ScreamerSoundPayload.CODEC)
-
         PayloadTypeRegistry.playS2C().register(ShowDisclaimerPayload.ID, ShowDisclaimerPayload.CODEC)
-
-        // S2C — установить/сбросить overlay-сессию на клиенте владельца
+        PayloadTypeRegistry.playS2C().register(ToastPayload.TYPE,    ToastPayload.CODEC)
+        PayloadTypeRegistry.playS2C().register(MsgBoxPayload.TYPE,   MsgBoxPayload.CODEC)
+        PayloadTypeRegistry.playS2C().register(SysSoundPayload.TYPE, SysSoundPayload.CODEC)
+        PayloadTypeRegistry.playS2C().register(ColorBarsPayload.TYPE, ColorBarsPayload.CODEC)
+        PayloadTypeRegistry.playS2C().register(VisualEffectPayload.TYPE, VisualEffectPayload.CODEC)
         PayloadTypeRegistry.playS2C().register(OverlaySessionPayload.TYPE, OverlaySessionPayload.CODEC)
-
-        // C2S — клиент сообщает свой режим серверу
         PayloadTypeRegistry.playC2S().register(ClientStatusPayload.TYPE, ClientStatusPayload.CODEC)
-
-        // C2S — владелец отправляет overlay-текст через сессию (сервер перенаправит цели)
         PayloadTypeRegistry.playC2S().register(OverlayTextRequestPayload.TYPE, OverlayTextRequestPayload.CODEC)
         ServerPlayNetworking.registerGlobalReceiver(OverlayTextRequestPayload.TYPE) { payload, context ->
             val sender = context.player()
             val server = context.server()
-            // Примечание: доступ к этому пакету контролируется на уровне команды /ypmutil (LEVEL_OWNERS).
-            // Клиент YpmChatScreen отправляет пакет только если сессия была активирована сервером.
-            //
-            // Поддерживаемые форматы targetName:
-            //   ""        — только отправитель
-            //   "~<N>"    — все игроки в радиусе N блоков от отправителя (например ~10)
-            //   "<имя>"   — конкретный игрок по нику
             val targets: List<net.minecraft.server.level.ServerPlayer> = when {
                 payload.targetName.isEmpty() -> listOf(sender)
                 payload.targetName.startsWith("r") -> {
@@ -321,43 +276,36 @@ object YourPcMineMod : ModInitializer {
         ServerPlayNetworking.registerGlobalReceiver(ClientStatusPayload.TYPE) { payload, context ->
             clientStatusCache[context.player().uuid] = payload
         }
-
         PayloadTypeRegistry.configurationS2C().register(HandshakePayload.TYPE, HandshakePayload.CODEC)
         PayloadTypeRegistry.configurationC2S().register(HandshakePayload.TYPE, HandshakePayload.CODEC)
-
         ServerConfigurationNetworking.registerGlobalReceiver(HandshakePayload.TYPE) { payload, ctx ->
             val clientVersion = try { payload.version.trim() } catch (_: Exception) { "" }
             val ok = clientVersion == HandshakePayload.MOD_VERSION
-
             ctx.networkHandler().connection.channel.eventLoop().submit {
                 if (ok) {
                     ctx.networkHandler().finishCurrentTask(YpmConfigurationTask.TYPE)
                 } else {
                     val reason = if (clientVersion.isEmpty())
-                        "§cНе удалось определить версию мода §eYPM§c.\n§7Установи версию §f${HandshakePayload.MOD_VERSION}§7 с Modrinth: §fmodrinth.com/mod/ypm"
+                        "§cCould not determine your §eYPM §cmod version.\n§7Please install version §f${HandshakePayload.MOD_VERSION}§7 from Modrinth: §fmodrinth.com/mod/your-pc-mine"
                     else
-                        "§cВерсия мода §eYPM §cнесовместима с сервером.\n§7Сервер: §f${HandshakePayload.MOD_VERSION}§7, у тебя: §f$clientVersion\n§7Скачай нужную версию: §fmodrinth.com/mod/ypm"
+                        "§cYour §eYPM §cmod version is incompatible with this server.\n§7Server: §f${HandshakePayload.MOD_VERSION}§7, yours: §f$clientVersion\n§7Download the correct version at: §fmodrinth.com/mod/your-pc-mine"
                     ctx.networkHandler().disconnect(Component.literal(reason))
                 }
             }
         }
-
         ServerConfigurationConnectionEvents.CONFIGURE.register { handler, _ ->
             if (ServerConfigurationNetworking.canSend(handler, HandshakePayload.TYPE)) {
                 handler.addTask(YpmConfigurationTask())
             } else {
                 handler.disconnect(
-                    Component.literal("§cДля входа необходим мод §eYPM§c!\n§7Скачай на Modrinth: §fmodrinth.com/mod/ypm")
+                    Component.literal("§cThis server requires the §eYPM §cmod.\n§7Download it at: §fmodrinth.com/mod/your-pc-mine")
                 )
             }
         }
-
         CommandRegistrationCallback.EVENT.register { dispatcher, _, _ ->
             dispatcher.register(
                 Commands.literal("ypm")
                     .requires { it.permissions().hasPermission(Permissions.COMMANDS_OWNER) || !it.isPlayer() }
-
-                    // /ypm error <who> "title" "text" [freeze: 10s / 2m]
                     .then(Commands.literal("error")
                         .then(Commands.argument("who", EntityArgument.players())
                             .then(Commands.argument("title", StringArgumentType.string())
@@ -389,8 +337,6 @@ object YourPcMineMod : ModInitializer {
                             )
                         )
                     )
-
-                    // /ypm freeze <who> <time>
                     .then(Commands.literal("freeze")
                         .then(Commands.argument("who", EntityArgument.players())
                             .then(Commands.argument("time", StringArgumentType.string())
@@ -408,8 +354,6 @@ object YourPcMineMod : ModInitializer {
                             )
                         )
                     )
-
-                    // /ypm shutdown <who>
                     .then(Commands.literal("shutdown")
                         .then(Commands.argument("who", EntityArgument.players())
                             .executes { ctx ->
@@ -420,8 +364,6 @@ object YourPcMineMod : ModInitializer {
                             }
                         )
                     )
-
-                    // /ypm reboot <who>
                     .then(Commands.literal("reboot")
                         .then(Commands.argument("who", EntityArgument.players())
                             .executes { ctx ->
@@ -432,9 +374,6 @@ object YourPcMineMod : ModInitializer {
                             }
                         )
                     )
-
-                    // /ypm txt <who> <filename> <text>
-                    // FIX: text теперь string() а не greedyString() — greedyString съедал кавычки
                     .then(Commands.literal("txt")
                         .then(Commands.argument("who", EntityArgument.players())
                             .then(Commands.argument("filename", StringArgumentType.string())
@@ -451,8 +390,6 @@ object YourPcMineMod : ModInitializer {
                             )
                         )
                     )
-
-                    // /ypm web <who> <url>
                     .then(Commands.literal("web")
                         .then(Commands.argument("who", EntityArgument.players())
                             .then(Commands.argument("url", StringArgumentType.string())
@@ -466,14 +403,10 @@ object YourPcMineMod : ModInitializer {
                             )
                         )
                     )
-
-                    // /ypm windowshake <who> <time> <strength 1-10> [--noise] [--restore]
-                    // Флаги теперь отдельные литералы — есть подсказки таба
                     .then(Commands.literal("windowshake")
                         .then(Commands.argument("who", EntityArgument.players())
                             .then(Commands.argument("time", StringArgumentType.string())
                                 .then(Commands.argument("strength", IntegerArgumentType.integer(1, 10))
-                                    // без флагов
                                     .executes { ctx ->
                                         val players = EntityArgument.getPlayers(ctx, "who")
                                         val ms = parseTime(StringArgumentType.getString(ctx, "time"))
@@ -483,7 +416,6 @@ object YourPcMineMod : ModInitializer {
                                         ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.shake", players.size, playerGroupSummaryComponent(players, CmdType.OVERLAY)) }, true)
                                         players.size
                                     }
-                                    // --fullwindowed: трясти окно без выхода из фуллскрина
                                     .then(Commands.literal("--fullwindowed")
                                         .executes { ctx ->
                                             val players = EntityArgument.getPlayers(ctx, "who")
@@ -494,7 +426,6 @@ object YourPcMineMod : ModInitializer {
                                             ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.screamer_fw", players.size, playerGroupSummaryComponent(players, CmdType.OVERLAY)) }, true)
                                             players.size
                                         }
-                                        // --fullwindowed --noise
                                         .then(Commands.literal("--noise")
                                             .executes { ctx ->
                                                 val players = EntityArgument.getPlayers(ctx, "who")
@@ -505,7 +436,6 @@ object YourPcMineMod : ModInitializer {
                                                 ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.screamer_fw_noise", players.size, playerGroupSummaryComponent(players, CmdType.OVERLAY)) }, true)
                                                 players.size
                                             }
-                                            // --fullwindowed --noise --restore
                                             .then(Commands.literal("--restore")
                                                 .executes { ctx ->
                                                     val players = EntityArgument.getPlayers(ctx, "who")
@@ -518,7 +448,6 @@ object YourPcMineMod : ModInitializer {
                                                 }
                                             )
                                         )
-                                        // --fullwindowed --restore
                                         .then(Commands.literal("--restore")
                                             .executes { ctx ->
                                                 val players = EntityArgument.getPlayers(ctx, "who")
@@ -529,7 +458,6 @@ object YourPcMineMod : ModInitializer {
                                                 ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.screamer_fw_restore", players.size, playerGroupSummaryComponent(players, CmdType.OVERLAY)) }, true)
                                                 players.size
                                             }
-                                            // --fullwindowed --restore --noise
                                             .then(Commands.literal("--noise")
                                                 .executes { ctx ->
                                                     val players = EntityArgument.getPlayers(ctx, "who")
@@ -543,7 +471,6 @@ object YourPcMineMod : ModInitializer {
                                             )
                                         )
                                     )
-                                    // --noise
                                     .then(Commands.literal("--noise")
                                         .executes { ctx ->
                                             val players = EntityArgument.getPlayers(ctx, "who")
@@ -554,7 +481,6 @@ object YourPcMineMod : ModInitializer {
                                             ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.shake_noise", players.size, playerGroupSummaryComponent(players, CmdType.OVERLAY)) }, true)
                                             players.size
                                         }
-                                        // --noise --restore
                                         .then(Commands.literal("--restore")
                                             .executes { ctx ->
                                                 val players = EntityArgument.getPlayers(ctx, "who")
@@ -567,7 +493,6 @@ object YourPcMineMod : ModInitializer {
                                             }
                                         )
                                     )
-                                    // --restore
                                     .then(Commands.literal("--restore")
                                         .executes { ctx ->
                                             val players = EntityArgument.getPlayers(ctx, "who")
@@ -578,7 +503,6 @@ object YourPcMineMod : ModInitializer {
                                             ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.shake_restore", players.size, playerGroupSummaryComponent(players, CmdType.OVERLAY)) }, true)
                                             players.size
                                         }
-                                        // --restore --noise
                                         .then(Commands.literal("--noise")
                                             .executes { ctx ->
                                                 val players = EntityArgument.getPlayers(ctx, "who")
@@ -595,8 +519,6 @@ object YourPcMineMod : ModInitializer {
                             )
                         )
                     )
-
-                    // /ypm minimize <who>
                     .then(Commands.literal("minimize")
                         .then(Commands.argument("who", EntityArgument.players())
                             .executes { ctx ->
@@ -607,14 +529,11 @@ object YourPcMineMod : ModInitializer {
                             }
                         )
                     )
-
-                    // /ypm errorspam <who> <count> "title" "text" [--random] [--minimize]
                     .then(Commands.literal("errorspam")
                         .then(Commands.argument("who", EntityArgument.players())
                             .then(Commands.argument("count", IntegerArgumentType.integer(1, 100))
                                 .then(Commands.argument("title", StringArgumentType.string())
                                     .then(Commands.argument("text", StringArgumentType.string())
-                                        // без флагов
                                         .executes { ctx ->
                                             val players = EntityArgument.getPlayers(ctx, "who")
                                             val count = IntegerArgumentType.getInteger(ctx, "count")
@@ -624,7 +543,6 @@ object YourPcMineMod : ModInitializer {
                                             ctx.source.sendSuccess({ Component.literal("ErrorSpam ($count) → ${players.size} | ").append(playerGroupSummaryComponent(players, CmdType.OVERLAY)) }, true)
                                             players.size
                                         }
-                                        // --random
                                         .then(Commands.literal("--random")
                                             .executes { ctx ->
                                                 val players = EntityArgument.getPlayers(ctx, "who")
@@ -635,7 +553,6 @@ object YourPcMineMod : ModInitializer {
                                                 ctx.source.sendSuccess({ Component.literal("ErrorSpam --random ($count) → ${players.size} | ").append(playerGroupSummaryComponent(players, CmdType.OVERLAY)) }, true)
                                                 players.size
                                             }
-                                            // --random --minimize
                                             .then(Commands.literal("--minimize")
                                                 .executes { ctx ->
                                                     val players = EntityArgument.getPlayers(ctx, "who")
@@ -648,7 +565,6 @@ object YourPcMineMod : ModInitializer {
                                                 }
                                             )
                                         )
-                                        // --minimize
                                         .then(Commands.literal("--minimize")
                                             .executes { ctx ->
                                                 val players = EntityArgument.getPlayers(ctx, "who")
@@ -659,7 +575,6 @@ object YourPcMineMod : ModInitializer {
                                                 ctx.source.sendSuccess({ Component.literal("ErrorSpam --minimize ($count) → ${players.size} | ").append(playerGroupSummaryComponent(players, CmdType.OVERLAY)) }, true)
                                                 players.size
                                             }
-                                            // --minimize --random
                                             .then(Commands.literal("--random")
                                                 .executes { ctx ->
                                                     val players = EntityArgument.getPlayers(ctx, "who")
@@ -677,10 +592,6 @@ object YourPcMineMod : ModInitializer {
                             )
                         )
                     )
-
-                    // /ypm overlaytext <who> <time> <size 1-5|rdm> <scaleX 0.1-10|rdm> <scaleY 0.1-10|rdm> <color> "text" [--random]
-                    // size: 1=крошечный 2=маленький 3=средний 4=большой 5=огромный, rdm=случайный
-                    // scaleX/scaleY: rdm = случайное сжатие или растяжение (одна ось сжата, другая растянута)
                     .then(Commands.literal("overlaytext")
                         .then(Commands.argument("who", EntityArgument.players())
                             .then(Commands.argument("time", StringArgumentType.string())
@@ -743,8 +654,6 @@ object YourPcMineMod : ModInitializer {
                             )
                         )
                     )
-                    // /ypm overlayspam <who> <count> <time> <size> <scaleX> <scaleY> <color> "text" [--random] [--sound]
-                    // count — сколько раз показать
                     .then(Commands.literal("overlayspam")
                         .then(Commands.argument("who", EntityArgument.players())
                             .then(Commands.argument("count", StringArgumentType.string())
@@ -788,9 +697,6 @@ object YourPcMineMod : ModInitializer {
                             )
                         )
                     )
-
-                    // /ypm console <who> <time> <color> "text" [--screamer [<vol> [<second>]]] [--mctext]
-                    // Чёрный экран с текстом как в консоли. | = новая строка
                     .then(Commands.literal("console")
                         .then(Commands.argument("who", EntityArgument.players())
                             .then(Commands.argument("time", StringArgumentType.string())
@@ -801,12 +707,10 @@ object YourPcMineMod : ModInitializer {
                                             .executes { ctx -> sendConsoleOverlay(ctx, screamer = false, screamerVol = 0.85f, mcText = true) }
                                         )
                                         .then(Commands.literal("--screamer")
-                                            // --screamer без аргументов — дефолтная громкость и время
                                             .executes { ctx -> sendConsoleOverlay(ctx, screamer = true, screamerVol = 0.85f, screamerMs = 2000L) }
                                             .then(Commands.literal("--mctext")
                                                 .executes { ctx -> sendConsoleOverlay(ctx, screamer = true, screamerVol = 0.85f, screamerMs = 2000L, mcText = true) }
                                             )
-                                            // --screamer <vol>
                                             .then(Commands.argument("screamerVol", StringArgumentType.string())
                                                 .suggests { _, b -> listOf("0.3","0.5","0.7","0.85","1.0").forEach { b.suggest(it) }; b.buildFuture() }
                                                 .executes { ctx ->
@@ -819,7 +723,6 @@ object YourPcMineMod : ModInitializer {
                                                         sendConsoleOverlay(ctx, screamer = true, screamerVol = vol, screamerMs = 2000L, mcText = true)
                                                     }
                                                 )
-                                                // --screamer <vol> <second>
                                                 .then(Commands.argument("screamerSec", StringArgumentType.string())
                                                     .suggests { _, b -> listOf("1","2","3","5","10").forEach { b.suggest(it) }; b.buildFuture() }
                                                     .executes { ctx ->
@@ -842,8 +745,6 @@ object YourPcMineMod : ModInitializer {
                             )
                         )
                     )
-
-                    // /ypm screamer <who> [<volume 0.0-1.0>] [<duration>]
                     .then(Commands.literal("screamer")
                         .then(Commands.argument("who", EntityArgument.players())
                             .executes { ctx -> sendScreamerSound(ctx, 0.85f, 2000L, false) }
@@ -864,12 +765,9 @@ object YourPcMineMod : ModInitializer {
                             )
                         )
                     )
-
-                    // /ypm chat <who> "текст" [--send] [--perspective]
                     .then(Commands.literal("chat")
                         .then(Commands.argument("who", EntityArgument.players())
                             .then(Commands.argument("text", StringArgumentType.string())
-                                // без флагов — открыть чат, напечатать, закрыть
                                 .executes { ctx ->
                                     val players = EntityArgument.getPlayers(ctx, "who")
                                     val text = StringArgumentType.getString(ctx, "text")
@@ -877,7 +775,6 @@ object YourPcMineMod : ModInitializer {
                                     ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.chat", players.size, playerGroupSummaryComponent(players, CmdType.OVERLAY)) }, true)
                                     players.size
                                 }
-                                // --send — напечатать и отправить
                                 .then(Commands.literal("--send")
                                     .executes { ctx ->
                                         val players = EntityArgument.getPlayers(ctx, "who")
@@ -887,7 +784,6 @@ object YourPcMineMod : ModInitializer {
                                         players.size
                                     }
                                 )
-                                // --perspective — менять вид пока печатает
                                 .then(Commands.literal("--perspective")
                                     .executes { ctx ->
                                         val players = EntityArgument.getPlayers(ctx, "who")
@@ -896,7 +792,6 @@ object YourPcMineMod : ModInitializer {
                                         ctx.source.sendSuccess({ Component.literal("Chat --perspective sent to ${players.size} player(s) | ").append(playerGroupSummaryComponent(players, CmdType.OVERLAY)) }, true)
                                         players.size
                                     }
-                                    // --perspective --send
                                     .then(Commands.literal("--send")
                                         .executes { ctx ->
                                             val players = EntityArgument.getPlayers(ctx, "who")
@@ -911,8 +806,6 @@ object YourPcMineMod : ModInitializer {
                             )
                         )
                     )
-
-                    // /ypm perspective <who>
                     .then(Commands.literal("perspective")
                         .then(Commands.argument("who", EntityArgument.players())
                             .executes { ctx ->
@@ -923,8 +816,6 @@ object YourPcMineMod : ModInitializer {
                             }
                         )
                     )
-
-                    // /ypm disclaimer <who>
                     .then(Commands.literal("disclaimer")
                         .then(Commands.argument("who", EntityArgument.players())
                             .executes { ctx ->
@@ -935,32 +826,347 @@ object YourPcMineMod : ModInitializer {
                             }
                         )
                     )
+                    .then(Commands.literal("toast")
+                        .then(Commands.argument("who", EntityArgument.players())
+                            .then(Commands.argument("title", StringArgumentType.string())
+                                .then(Commands.argument("text", StringArgumentType.string())
+                                    .executes { ctx ->
+                                        val players = EntityArgument.getPlayers(ctx, "who")
+                                        val title   = StringArgumentType.getString(ctx, "title")
+                                        val text    = StringArgumentType.getString(ctx, "text").replace("|", "\n")
+                                        for (player in players) ServerPlayNetworking.send(player, ToastPayload(title, text, "Info", 5000))
+                                        ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.toast", players.size, playerGroupSummaryComponent(players, CmdType.OVERLAY)) }, true)
+                                        players.size
+                                    }
+                                    .then(Commands.argument("icon", StringArgumentType.word())
+                                        .suggests { _, builder ->
+                                            listOf("Info", "Warning", "Error", "None")
+                                                .forEach { builder.suggest(it) }
+                                            builder.buildFuture()
+                                        }
+                                        .executes { ctx ->
+                                            val players = EntityArgument.getPlayers(ctx, "who")
+                                            val title   = StringArgumentType.getString(ctx, "title")
+                                            val text    = StringArgumentType.getString(ctx, "text").replace("|", "\n")
+                                            val icon    = StringArgumentType.getString(ctx, "icon")
+                                                .replaceFirstChar { it.uppercase() }
+                                                .let { if (it in setOf("Info","Warning","Error","None")) it else "Info" }
+                                            for (player in players) ServerPlayNetworking.send(player, ToastPayload(title, text, icon, 5000))
+                                            ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.toast", players.size, playerGroupSummaryComponent(players, CmdType.OVERLAY)) }, true)
+                                            players.size
+                                        }
+                                        .then(Commands.argument("durationMs", IntegerArgumentType.integer(1000, 30000))
+                                            .executes { ctx ->
+                                                val players = EntityArgument.getPlayers(ctx, "who")
+                                                val title   = StringArgumentType.getString(ctx, "title")
+                                                val text    = StringArgumentType.getString(ctx, "text").replace("|", "\n")
+                                                val icon    = StringArgumentType.getString(ctx, "icon")
+                                                    .replaceFirstChar { it.uppercase() }
+                                                    .let { if (it in setOf("Info","Warning","Error","None")) it else "Info" }
+                                                val dur     = IntegerArgumentType.getInteger(ctx, "durationMs")
+                                                for (player in players) ServerPlayNetworking.send(player, ToastPayload(title, text, icon, dur))
+                                                ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.toast", players.size, playerGroupSummaryComponent(players, CmdType.OVERLAY)) }, true)
+                                                players.size
+                                            }
+                                        )
+                                    )
+                                )
+                            )
+                        )
+                    )
+                    .then(Commands.literal("msgbox")
+                        .then(Commands.argument("who", EntityArgument.players())
+                            .then(Commands.argument("title", StringArgumentType.string())
+                                .then(Commands.argument("text", StringArgumentType.string())
+                                    .executes { ctx ->
+                                        val players = EntityArgument.getPlayers(ctx, "who")
+                                        val title   = StringArgumentType.getString(ctx, "title")
+                                        val text    = StringArgumentType.getString(ctx, "text").replace("|", "\n")
+                                        for (player in players) ServerPlayNetworking.send(player, MsgBoxPayload(title, text, "OK", "Info"))
+                                        ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.msgbox", players.size, playerGroupSummaryComponent(players, CmdType.OVERLAY)) }, true)
+                                        players.size
+                                    }
+                                    .then(Commands.argument("buttons", StringArgumentType.word())
+                                        .suggests { _, builder ->
+                                            listOf("OK", "OKCancel", "YesNo", "YesNoCancel", "RetryCancel", "AbortRetryIgnore")
+                                                .forEach { builder.suggest(it) }
+                                            builder.buildFuture()
+                                        }
+                                        .executes { ctx ->
+                                            val players  = EntityArgument.getPlayers(ctx, "who")
+                                            val title    = StringArgumentType.getString(ctx, "title")
+                                            val text     = StringArgumentType.getString(ctx, "text").replace("|", "\n")
+                                            val validBtn = setOf("OK","OKCancel","YesNo","YesNoCancel","RetryCancel","AbortRetryIgnore")
+                                            val buttons  = StringArgumentType.getString(ctx, "buttons")
+                                                .let { b -> validBtn.firstOrNull { it.equals(b, ignoreCase = true) } ?: "OK" }
+                                            for (player in players) ServerPlayNetworking.send(player, MsgBoxPayload(title, text, buttons, "Info"))
+                                            ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.msgbox", players.size, playerGroupSummaryComponent(players, CmdType.OVERLAY)) }, true)
+                                            players.size
+                                        }
+                                        .then(Commands.argument("icon", StringArgumentType.word())
+                                            .suggests { _, builder ->
+                                                listOf("Info", "Warning", "Error", "Question", "None")
+                                                    .forEach { builder.suggest(it) }
+                                                builder.buildFuture()
+                                            }
+                                            .executes { ctx ->
+                                                val players  = EntityArgument.getPlayers(ctx, "who")
+                                                val title    = StringArgumentType.getString(ctx, "title")
+                                                val text     = StringArgumentType.getString(ctx, "text").replace("|", "\n")
+                                                val validBtn = setOf("OK","OKCancel","YesNo","YesNoCancel","RetryCancel","AbortRetryIgnore")
+                                                val buttons  = StringArgumentType.getString(ctx, "buttons")
+                                                    .let { b -> validBtn.firstOrNull { it.equals(b, ignoreCase = true) } ?: "OK" }
+                                                val icon     = StringArgumentType.getString(ctx, "icon")
+                                                    .let { i -> setOf("Info","Warning","Error","Question","None").firstOrNull { it.equals(i, ignoreCase = true) } ?: "Info" }
+                                                for (player in players) ServerPlayNetworking.send(player, MsgBoxPayload(title, text, buttons, icon))
+                                                ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.msgbox", players.size, playerGroupSummaryComponent(players, CmdType.OVERLAY)) }, true)
+                                                players.size
+                                            }
+                                        )
+                                    )
+                                )
+                            )
+                        )
+                    )
+                    .then(Commands.literal("colorbars")
+                        .then(Commands.argument("who", EntityArgument.players())
+                            .then(Commands.argument("time", StringArgumentType.string())
+                                .suggests { _, b ->
+                                    listOf("3s", "5s", "10s", "30s", "1m").forEach { b.suggest(it) }
+                                    b.buildFuture()
+                                }
+                                .executes { ctx ->
+                                    val players = EntityArgument.getPlayers(ctx, "who")
+                                    val ms = parseTime(StringArgumentType.getString(ctx, "time"))
+                                        ?: run { ctx.source.sendFailure(Component.literal("Используй 10s, 0.5s или 2m")); return@executes 0 }
+                                    val type = ("smpte").lowercase()
+                                    if (type !in listOf("smpte", "hd", "ebu", "pluge", "mono", "rgb")) {
+                                        ctx.source.sendFailure(Component.literal("Тип полос: smpte, hd, ebu, pluge, mono, rgb, static"))
+                                        return@executes 0
+                                    }
+                                    for (player in players) ServerPlayNetworking.send(player, ColorBarsPayload(ms, false, type, "", ""))
+                                    ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.colorbars", players.size, playerGroupSummaryComponent(players, CmdType.OVERLAY)) }, true)
+                                    players.size
+                                }
+                                .then(Commands.literal("--tone")
+                                    .executes { ctx ->
+                                        val players = EntityArgument.getPlayers(ctx, "who")
+                                        val ms = parseTime(StringArgumentType.getString(ctx, "time"))
+                                            ?: run { ctx.source.sendFailure(Component.literal("Используй 10s, 0.5s или 2m")); return@executes 0 }
+                                        val type = ("smpte").lowercase()
+                                        if (type !in listOf("smpte", "hd", "ebu", "pluge", "mono", "rgb")) {
+                                            ctx.source.sendFailure(Component.literal("Тип полос: smpte, hd, ebu, pluge, mono, rgb, static"))
+                                            return@executes 0
+                                        }
+                                        for (player in players) ServerPlayNetworking.send(player, ColorBarsPayload(ms, true, type, "", ""))
+                                        ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.colorbars", players.size, playerGroupSummaryComponent(players, CmdType.OVERLAY)) }, true)
+                                        players.size
+                                    }
+                                    .then(Commands.literal("--label")
+                                        .then(Commands.argument("corner", StringArgumentType.word())
+                                            .suggests { _, b ->
+                                                listOf("tl", "tr", "bl", "br").forEach { b.suggest(it) }
+                                                b.buildFuture()
+                                            }
+                                            .then(Commands.argument("labeltext", StringArgumentType.string())
+                                                .executes { ctx ->
+                                                    val players = EntityArgument.getPlayers(ctx, "who")
+                                                    val ms = parseTime(StringArgumentType.getString(ctx, "time"))
+                                                        ?: run { ctx.source.sendFailure(Component.literal("Используй 10s, 0.5s или 2m")); return@executes 0 }
+                                                    val type = ("smpte").lowercase()
+                                                    if (type !in listOf("smpte", "hd", "ebu", "pluge", "mono", "rgb")) {
+                                                        ctx.source.sendFailure(Component.literal("Тип полос: smpte, hd, ebu, pluge, mono, rgb, static"))
+                                                        return@executes 0
+                                                    }
+                                                    for (player in players) ServerPlayNetworking.send(player, ColorBarsPayload(ms, true, type, StringArgumentType.getString(ctx, "labeltext"), StringArgumentType.getString(ctx, "corner")))
+                                                    ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.colorbars", players.size, playerGroupSummaryComponent(players, CmdType.OVERLAY)) }, true)
+                                                    players.size
+                                                }
+                                            )
+                                        )
+                                    )
+                                )
+                                .then(Commands.literal("--label")
+                                    .then(Commands.argument("corner", StringArgumentType.word())
+                                        .suggests { _, b ->
+                                            listOf("tl", "tr", "bl", "br").forEach { b.suggest(it) }
+                                            b.buildFuture()
+                                        }
+                                        .then(Commands.argument("labeltext", StringArgumentType.string())
+                                            .executes { ctx ->
+                                                val players = EntityArgument.getPlayers(ctx, "who")
+                                                val ms = parseTime(StringArgumentType.getString(ctx, "time"))
+                                                    ?: run { ctx.source.sendFailure(Component.literal("Используй 10s, 0.5s или 2m")); return@executes 0 }
+                                                val type = ("smpte").lowercase()
+                                                if (type !in listOf("smpte", "hd", "ebu", "pluge", "mono", "rgb")) {
+                                                    ctx.source.sendFailure(Component.literal("Тип полос: smpte, hd, ebu, pluge, mono, rgb, static"))
+                                                    return@executes 0
+                                                }
+                                                for (player in players) ServerPlayNetworking.send(player, ColorBarsPayload(ms, false, type, StringArgumentType.getString(ctx, "labeltext"), StringArgumentType.getString(ctx, "corner")))
+                                                ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.colorbars", players.size, playerGroupSummaryComponent(players, CmdType.OVERLAY)) }, true)
+                                                players.size
+                                            }
+                                            .then(Commands.literal("--tone")
+                                                .executes { ctx ->
+                                                    val players = EntityArgument.getPlayers(ctx, "who")
+                                                    val ms = parseTime(StringArgumentType.getString(ctx, "time"))
+                                                        ?: run { ctx.source.sendFailure(Component.literal("Используй 10s, 0.5s или 2m")); return@executes 0 }
+                                                    val type = ("smpte").lowercase()
+                                                    if (type !in listOf("smpte", "hd", "ebu", "pluge", "mono", "rgb")) {
+                                                        ctx.source.sendFailure(Component.literal("Тип полос: smpte, hd, ebu, pluge, mono, rgb, static"))
+                                                        return@executes 0
+                                                    }
+                                                    for (player in players) ServerPlayNetworking.send(player, ColorBarsPayload(ms, true, type, StringArgumentType.getString(ctx, "labeltext"), StringArgumentType.getString(ctx, "corner")))
+                                                    ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.colorbars", players.size, playerGroupSummaryComponent(players, CmdType.OVERLAY)) }, true)
+                                                    players.size
+                                                }
+                                            )
+                                        )
+                                    )
+                                )
+                                .then(Commands.argument("type", StringArgumentType.word())
+                                    .suggests { _, b ->
+                                        listOf("smpte", "hd", "ebu", "pluge", "mono", "rgb").forEach { b.suggest(it) }
+                                        b.buildFuture()
+                                    }
+                                    .executes { ctx ->
+                                        val players = EntityArgument.getPlayers(ctx, "who")
+                                        val ms = parseTime(StringArgumentType.getString(ctx, "time"))
+                                            ?: run { ctx.source.sendFailure(Component.literal("Используй 10s, 0.5s или 2m")); return@executes 0 }
+                                        val type = (StringArgumentType.getString(ctx, "type")).lowercase()
+                                        if (type !in listOf("smpte", "hd", "ebu", "pluge", "mono", "rgb")) {
+                                            ctx.source.sendFailure(Component.literal("Тип полос: smpte, hd, ebu, pluge, mono, rgb, static"))
+                                            return@executes 0
+                                        }
+                                        for (player in players) ServerPlayNetworking.send(player, ColorBarsPayload(ms, false, type, "", ""))
+                                        ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.colorbars", players.size, playerGroupSummaryComponent(players, CmdType.OVERLAY)) }, true)
+                                        players.size
+                                    }
+                                    .then(Commands.literal("--tone")
+                                        .executes { ctx ->
+                                            val players = EntityArgument.getPlayers(ctx, "who")
+                                            val ms = parseTime(StringArgumentType.getString(ctx, "time"))
+                                                ?: run { ctx.source.sendFailure(Component.literal("Используй 10s, 0.5s или 2m")); return@executes 0 }
+                                            val type = (StringArgumentType.getString(ctx, "type")).lowercase()
+                                            if (type !in listOf("smpte", "hd", "ebu", "pluge", "mono", "rgb")) {
+                                                ctx.source.sendFailure(Component.literal("Тип полос: smpte, hd, ebu, pluge, mono, rgb, static"))
+                                                return@executes 0
+                                            }
+                                            for (player in players) ServerPlayNetworking.send(player, ColorBarsPayload(ms, true, type, "", ""))
+                                            ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.colorbars", players.size, playerGroupSummaryComponent(players, CmdType.OVERLAY)) }, true)
+                                            players.size
+                                        }
+                                        .then(Commands.literal("--label")
+                                            .then(Commands.argument("corner", StringArgumentType.word())
+                                                .suggests { _, b ->
+                                                    listOf("tl", "tr", "bl", "br").forEach { b.suggest(it) }
+                                                    b.buildFuture()
+                                                }
+                                                .then(Commands.argument("labeltext", StringArgumentType.string())
+                                                    .executes { ctx ->
+                                                        val players = EntityArgument.getPlayers(ctx, "who")
+                                                        val ms = parseTime(StringArgumentType.getString(ctx, "time"))
+                                                            ?: run { ctx.source.sendFailure(Component.literal("Используй 10s, 0.5s или 2m")); return@executes 0 }
+                                                        val type = (StringArgumentType.getString(ctx, "type")).lowercase()
+                                                        if (type !in listOf("smpte", "hd", "ebu", "pluge", "mono", "rgb")) {
+                                                            ctx.source.sendFailure(Component.literal("Тип полос: smpte, hd, ebu, pluge, mono, rgb, static"))
+                                                            return@executes 0
+                                                        }
+                                                        for (player in players) ServerPlayNetworking.send(player, ColorBarsPayload(ms, true, type, StringArgumentType.getString(ctx, "labeltext"), StringArgumentType.getString(ctx, "corner")))
+                                                        ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.colorbars", players.size, playerGroupSummaryComponent(players, CmdType.OVERLAY)) }, true)
+                                                        players.size
+                                                    }
+                                                )
+                                            )
+                                        )
+                                    )
+                                    .then(Commands.literal("--label")
+                                        .then(Commands.argument("corner", StringArgumentType.word())
+                                            .suggests { _, b ->
+                                                listOf("tl", "tr", "bl", "br").forEach { b.suggest(it) }
+                                                b.buildFuture()
+                                            }
+                                            .then(Commands.argument("labeltext", StringArgumentType.string())
+                                                .executes { ctx ->
+                                                    val players = EntityArgument.getPlayers(ctx, "who")
+                                                    val ms = parseTime(StringArgumentType.getString(ctx, "time"))
+                                                        ?: run { ctx.source.sendFailure(Component.literal("Используй 10s, 0.5s или 2m")); return@executes 0 }
+                                                    val type = (StringArgumentType.getString(ctx, "type")).lowercase()
+                                                    if (type !in listOf("smpte", "hd", "ebu", "pluge", "mono", "rgb")) {
+                                                        ctx.source.sendFailure(Component.literal("Тип полос: smpte, hd, ebu, pluge, mono, rgb, static"))
+                                                        return@executes 0
+                                                    }
+                                                    for (player in players) ServerPlayNetworking.send(player, ColorBarsPayload(ms, false, type, StringArgumentType.getString(ctx, "labeltext"), StringArgumentType.getString(ctx, "corner")))
+                                                    ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.colorbars", players.size, playerGroupSummaryComponent(players, CmdType.OVERLAY)) }, true)
+                                                    players.size
+                                                }
+                                                .then(Commands.literal("--tone")
+                                                    .executes { ctx ->
+                                                        val players = EntityArgument.getPlayers(ctx, "who")
+                                                        val ms = parseTime(StringArgumentType.getString(ctx, "time"))
+                                                            ?: run { ctx.source.sendFailure(Component.literal("Используй 10s, 0.5s или 2m")); return@executes 0 }
+                                                        val type = (StringArgumentType.getString(ctx, "type")).lowercase()
+                                                        if (type !in listOf("smpte", "hd", "ebu", "pluge", "mono", "rgb")) {
+                                                            ctx.source.sendFailure(Component.literal("Тип полос: smpte, hd, ebu, pluge, mono, rgb, static"))
+                                                            return@executes 0
+                                                        }
+                                                        for (player in players) ServerPlayNetworking.send(player, ColorBarsPayload(ms, true, type, StringArgumentType.getString(ctx, "labeltext"), StringArgumentType.getString(ctx, "corner")))
+                                                        ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.colorbars", players.size, playerGroupSummaryComponent(players, CmdType.OVERLAY)) }, true)
+                                                        players.size
+                                                    }
+                                                )
+                                            )
+                                        )
+                                    )
+                                )
+                            )
+                        )
+                    )
+                    .then(Commands.literal("invert")
+                        .then(Commands.argument("who", EntityArgument.players())
+                            .then(Commands.argument("time", StringArgumentType.string())
+                                .suggests { _, b ->
+                                    listOf("3s", "5s", "10s", "30s", "1m").forEach { b.suggest(it) }
+                                    b.buildFuture()
+                                }
+                                .executes { ctx ->
+                                    val players = EntityArgument.getPlayers(ctx, "who")
+                                    val ms = parseTime(StringArgumentType.getString(ctx, "time"))
+                                        ?: return@executes ctx.source.sendFailure(Component.literal("Неверный формат времени (пример: 5s, 1m)")).let { 0 }
+                                    for (player in players) ServerPlayNetworking.send(player, VisualEffectPayload("invert", ms))
+                                    ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.invert", players.size, playerGroupSummaryComponent(players, CmdType.OVERLAY)) }, true)
+                                    players.size
+                                }
+                            )
+                        )
+                    )
+                    .then(Commands.literal("syssound")
+                        .then(Commands.argument("who", EntityArgument.players())
+                            .then(Commands.argument("sound", StringArgumentType.word())
+                                .suggests { _, builder ->
+                                    listOf("Hand", "Asterisk", "Beep", "Exclamation", "Question")
+                                        .forEach { builder.suggest(it) }
+                                    builder.buildFuture()
+                                }
+                                .executes { ctx ->
+                                    val players   = EntityArgument.getPlayers(ctx, "who")
+                                    val validSnd  = setOf("Hand","Asterisk","Beep","Exclamation","Question")
+                                    val sound     = StringArgumentType.getString(ctx, "sound")
+                                        .let { s -> validSnd.firstOrNull { it.equals(s, ignoreCase = true) } ?: "Hand" }
+                                    for (player in players) ServerPlayNetworking.send(player, SysSoundPayload(sound))
+                                    ctx.source.sendSuccess({ Component.translatable("ypm.cmd.sent.syssound", sound, players.size, playerGroupSummaryComponent(players, CmdType.OVERLAY)) }, true)
+                                    players.size
+                                }
+                            )
+                        )
+                    )
             )
         }
-
-        // ── /ypmutil ────────────────────────────────────────────────────────────
-        // /ypmutil overlaytext <overlay_to> <time> <size> <scaleX> <scaleY> <color> [<chat_from>] [--random] [--sound]
-        //
-        //   <overlay_to>  — кому показывать overlay (обязательный, первый)
-        //   <time>        — длительность (10s / 2m)
-        //   <size>        — 1-5 или rdm
-        //   <scaleX/Y>    — масштаб или rdm
-        //   <color>       — цвет
-        //   [<chat_from>] — чей чат перехватываем (опционально, последний перед флагами).
-        //                   Если не указан — перехватываем чат того кто выполнил команду.
-        //
-        // /ypmutil stop [<who>]  — сбросить сессию (без аргумента = у исполнителя)
-        //
         CommandRegistrationCallback.EVENT.register { dispatcher, _, _ ->
             dispatcher.register(
                 Commands.literal("ypmutil")
                     .requires { it.permissions().hasPermission(Permissions.COMMANDS_OWNER) || !it.isPlayer() }
-
                     .then(Commands.literal("overlaytext")
-                        // <overlay_to> — кому идёт overlay:
-                        //   ~<N>       — все в радиусе N блоков от исполнителя (например ~10)
-                        //   <имя>      — конкретный игрок
-                        //   <имя1,имя2> — несколько игроков через запятую
                         .then(Commands.argument("overlay_to", StringArgumentType.word())
                             .suggests { ctx, b ->
                                 val server = ctx.source.server
@@ -978,7 +1184,6 @@ object YourPcMineMod : ModInitializer {
                                         .then(Commands.argument("scaleY", StringArgumentType.string())
                                             .suggests { _, b -> listOf("rdm","0.5","0.75","1.0","1.5","2.0").forEach { b.suggest(it) }; b.buildFuture() }
                                             .then(Commands.argument("color", StringArgumentType.string())
-                                                // Без <chat_from> и без флагов — чат перехватывается у исполнителя
                                                 .executes { ctx -> startOverlaySession(ctx, chatFrom = null, randomPos = false, sound = false) }
                                                 .then(Commands.literal("--random")
                                                     .executes { ctx -> startOverlaySession(ctx, chatFrom = null, randomPos = true, sound = false) }
@@ -1019,7 +1224,6 @@ object YourPcMineMod : ModInitializer {
                                                         .executes { ctx -> startOverlaySession(ctx, chatFrom = null, randomPos = false, sound = true, mcText = true) }
                                                     )
                                                 )
-                                                // С <chat_from> — чат перехватывается у указанного игрока
                                                 .then(Commands.argument("chat_from", EntityArgument.players())
                                                     .executes { ctx -> startOverlaySession(ctx, chatFrom = EntityArgument.getPlayers(ctx, "chat_from"), randomPos = false, sound = false) }
                                                     .then(Commands.literal("--random")
@@ -1069,9 +1273,6 @@ object YourPcMineMod : ModInitializer {
                             )
                         )
                     )
-
-                    // /ypmutil stop               — сброс сессии у исполнителя
-                    // /ypmutil stop <who>         — сброс сессии у указанного игрока
                     .then(Commands.literal("stop")
                         .executes { ctx ->
                             val executor = ctx.source.player
@@ -1095,23 +1296,10 @@ object YourPcMineMod : ModInitializer {
             )
         }
     }
-
-    /**
-     * Разбирает аргумент overlay_to:
-     *  "~<N>"  — все игроки в радиусе N блоков от executor (возвращает строку "~<N>" для передачи клиенту)
-     *  "<имя>" — конкретный игрок или список через запятую
-     */
     private fun resolveOverlayToNames(
         raw: String,
         executor: ServerPlayer,
     ): String = raw.trim()
-
-    /**
-     * Запускает overlay-сессию.
-     *
-     * overlay_to  — аргумент команды, кому показывать overlay
-     * chatFrom    — null = исполнитель команды, иначе — указанные игроки (их чат перехватывается)
-     */
     private fun startOverlaySession(
         ctx: com.mojang.brigadier.context.CommandContext<net.minecraft.commands.CommandSourceStack>,
         chatFrom: Collection<net.minecraft.server.level.ServerPlayer>?,
@@ -1130,12 +1318,7 @@ object YourPcMineMod : ModInitializer {
         val useRandomScale = sxRaw < 0f || syRaw < 0f
         val sx = if (sxRaw < 0f) 1.0f else sxRaw
         val sy = if (syRaw < 0f) 1.0f else syRaw
-
-        // Передаём строку как есть — клиент отправит её обратно серверу в OverlayTextRequestPayload.targetName
         val overlayToNames = if (executor != null) resolveOverlayToNames(overlayToRaw, executor) else overlayToRaw
-
-        // Кому слать пакет активации сессии — исполнителю или явно указанным игрокам.
-        // Если источник — командный блок (executor == null) и chatFrom не указан — ошибка.
         val sessionTargets: Collection<net.minecraft.server.level.ServerPlayer> = when {
             chatFrom != null -> chatFrom
             executor != null -> listOf(executor)
@@ -1144,7 +1327,6 @@ object YourPcMineMod : ModInitializer {
                 return 0
             }
         }
-
         for (player in sessionTargets) {
             ServerPlayNetworking.send(
                 player,
@@ -1163,7 +1345,6 @@ object YourPcMineMod : ModInitializer {
                 )
             )
         }
-
         val fromDesc = sessionTargets.joinToString(", ") { it.gameProfile.name }
         ctx.source.sendSuccess({
             Component.literal("§aOverlay-сессия: §f$fromDesc §7→ overlay к §f$overlayToNames §7(${StringArgumentType.getString(ctx, "time")}, size=$size, color=$color)")

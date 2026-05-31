@@ -6,19 +6,7 @@ import net.minecraft.network.codec.StreamCodec
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload
 import net.minecraft.resources.Identifier
 
-/**
- * Показывает текст поверх экрана в случайном месте (или по центру).
- *
- * @param text      текст для отображения (| = новая строка)
- * @param color     цвет: название ("red","green","white" и т.д.) или hex "#RRGGBB"
- * @param size      1–5 (или случайный на стороне сервера)
- * @param scaleX    горизонтальное растяжение (1.0 = норма, >1 = растянуть, <1 = ужать)
- * @param scaleY    вертикальное растяжение
- * @param durationMs время показа в мс
- * @param random      true = случайная позиция на экране
- * @param randomScale true = случайное растяжение/сжатие (scaleX/scaleY игнорируются, генерируются рандомно)
- * @param sound       true = воспроизвести низкий волновой звук (2-3 ноты с разным pitch)
- */
+
 data class OverlayTextPayload(
     val text: String,
     val color: String,

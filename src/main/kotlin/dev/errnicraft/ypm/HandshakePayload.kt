@@ -1,5 +1,6 @@
 package dev.errnicraft.ypm
 
+import net.fabricmc.loader.api.FabricLoader
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.ByteBufCodecs
 import net.minecraft.network.codec.StreamCodec
@@ -10,7 +11,12 @@ class HandshakePayload(val version: String = MOD_VERSION) : CustomPacketPayload 
     override fun type(): CustomPacketPayload.Type<HandshakePayload> = TYPE
 
     companion object {
-        const val MOD_VERSION = "1.0.4"
+
+        val MOD_VERSION: String =
+            FabricLoader.getInstance()
+                .getModContainer("ypm")
+                .map { it.metadata.version.friendlyString }
+                .orElse("unknown")
 
         val TYPE = CustomPacketPayload.Type<HandshakePayload>(
             Identifier.fromNamespaceAndPath("ypm", "handshake")

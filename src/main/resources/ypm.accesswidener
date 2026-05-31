@@ -11,3 +11,7 @@ accessible field net/minecraft/network/Connection channel Lio/netty/channel/Chan
 
 # ChatScreen.input
 accessible field net/minecraft/client/gui/screens/ChatScreen input Lnet/minecraft/client/gui/components/EditBox;
+
+# GameRenderer post-effect fields (для flip/invert эффектов)
+accessible field net/minecraft/client/renderer/GameRenderer postEffectId Lnet/minecraft/resources/Identifier;
+accessible field net/minecraft/client/renderer/GameRenderer effectActive Z

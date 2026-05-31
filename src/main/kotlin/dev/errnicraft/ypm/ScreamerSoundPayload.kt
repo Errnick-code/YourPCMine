@@ -6,13 +6,7 @@ import net.minecraft.network.codec.StreamCodec
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload
 import net.minecraft.resources.Identifier
 
-/**
- * Скример-звук из квадратной волны (square wave).
- *
- * @param volume    громкость 0.0–1.0
- * @param randomize рандомизировать высоту (частоту) звука
- * @param durationMs длительность звука в мс
- */
+
 data class ScreamerSoundPayload(
     val volume: Float,
     val randomize: Boolean,

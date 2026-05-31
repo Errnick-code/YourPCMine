@@ -10,8 +10,8 @@ data class ErrorSpamPayload(
     val title: String,
     val text: String,
     val count: Int,
-    val random: Boolean,    // true = случайная позиция для каждого окна
-    val minimize: Boolean   // true = свернуть все окна + Minecraft в маленький оконный режим
+    val random: Boolean,
+    val minimize: Boolean
 ) : CustomPacketPayload {
 
     override fun type(): CustomPacketPayload.Type<ErrorSpamPayload> = TYPE
