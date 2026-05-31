@@ -3,7 +3,7 @@ A Fabric mod that lets you mess with your friends directly from a Minecraft serv
 Built for ARGs, horror maps, or just chaotic fun — you type a command, and something happens on their screen. Or their desktop. Or their PC.
 > ⚠️ **Must be installed on both server and client.** Players without the mod will be kicked on join.
 ## Requirements
-- Minecraft 1.21.11
+- Minecraft 1.21.1
 - [Fabric Loader](https://fabricmc.net/use/installer/) `>=0.18.0`
 - [Fabric API](https://modrinth.com/mod/fabric-api)
 - [Fabric Language Kotlin](https://modrinth.com/mod/fabric-language-kotlin)
@@ -13,8 +13,13 @@ All commands require operator permissions.
 |---|---|
 | `/ypm error <player> "Title" "Text" [freeze]` | Shows a fake Windows error dialog. Optional freeze before showing. Use `\|` for line breaks. |
 | `/ypm errorspam <player> <count> "Title" "Text" [--random] [--minimize]` | Floods the screen with fake error dialogs (up to 100). `--random` randomizes positions, `--minimize` minimizes Minecraft first. |
+| `/ypm toast <player> "Title" "Text" [icon] [durationMs]` | Shows a real Windows system notification (toast) in the bottom-right corner. Icons: `Info` (default), `Warning`, `Error`, `None`. |
+| `/ypm msgbox <player> "Title" "Text" [buttons] [icon]` | Opens a real Windows message box dialog with custom button sets and icons. |
 | `/ypm freeze <player> <time>` | Freezes their game completely. Example: `10s`, `2m` |
-| `/ypm windowshake <player> <time> <1-10> [--noise] [--fullwindowed] [--restore]` | Shakes their Minecraft window |
+| `/ypm windowshake <player> <time> <strength 1-10> [--noise] [--fullwindowed] [--restore]` | Shakes their Minecraft window. |
+| `/ypm colorbars <player> <time> [type] [--tone] [--label <corner> "text"]` | Covers their screen with broadcast-style color bars. `--tone` plays a 1kHz test tone. |
+| `/ypm invert <player> <time>` | Inverts all colors on their screen for the given time (e.g. `5s`, `1m`). |
+| `/ypm syssound <player> <sound>` | Plays a Windows system sound on their PC with no visual. Options: `Hand`, `Asterisk`, `Beep`, `Exclamation`, `Question`. |
 | `/ypm overlaytext <player> <time> <size 1-5\|rdm> <scaleX\|rdm> <scaleY\|rdm> <color> "text" [--random] [--sound] [--mctext]` | Renders text directly on their screen over the game. Supports `&`-color and formatting codes, `\|` for line breaks. |
 | `/ypm overlayspam <player> <count> <time> <size> <scaleX> <scaleY> <color> "text" [--random] [--sound]` | Same as overlaytext but repeated N times with 100ms between flashes. |
 | `/ypm console <player> <time> <color> "text" [--screamer [<vol> [<seconds>]]] [--mctext]` | Blacks out the screen and types text line-by-line like a terminal, looping until time runs out. Use `\|` to separate lines. |
